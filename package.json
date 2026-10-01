@@ -1,0 +1,14 @@
+{
+  "name": "smart-attendance",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w apps/admin\" \"npm run dev -w apps/server\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
