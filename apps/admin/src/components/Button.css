@@ -1,0 +1,109 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  border: 1px solid transparent;
+  line-height: 1;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Sizes */
+.btn--sm {
+  padding: 6px 12px;
+  font-size: var(--font-size-xs);
+  height: 30px;
+}
+
+.btn--md {
+  padding: 8px 16px;
+  font-size: var(--font-size-base);
+  height: 36px;
+}
+
+.btn--lg {
+  padding: 10px 20px;
+  font-size: var(--font-size-md);
+  height: 42px;
+}
+
+/* Variants */
+.btn--primary {
+  background: var(--color-accent-primary);
+  color: #FFFFFF;
+  border-color: var(--color-accent-primary);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-accent-primary-hover);
+  border-color: var(--color-accent-primary-hover);
+}
+
+.btn--secondary {
+  background: #FFFFFF;
+  color: var(--color-accent-primary);
+  border-color: var(--color-accent-primary);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent-primary-hover);
+  color: var(--color-accent-primary-hover);
+}
+
+.btn--danger {
+  background: var(--color-danger);
+  color: #FFFFFF;
+  border-color: var(--color-danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #b91c1c; /* Tailwind red-700 */
+  border-color: #b91c1c;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-navy);
+}
+
+.btn--full {
+  width: 100%;
+}
+
+/* Loading */
+.btn--loading {
+  position: relative;
+}
+
+.btn__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: btn-spin 0.6s linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn__label {
+  display: inline-flex;
+  align-items: center;
+}

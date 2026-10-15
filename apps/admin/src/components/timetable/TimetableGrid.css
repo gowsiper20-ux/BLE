@@ -1,0 +1,105 @@
+.timetable-grid-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.timetable-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.timetable-table th {
+  background-color: #F1F6FC;
+  padding: 12px 16px;
+  text-align: center;
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  font-weight: 600;
+  color: var(--color-navy);
+}
+
+.timetable-table td {
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  padding: 12px;
+  vertical-align: top;
+  height: 100px;
+  min-width: 150px;
+}
+
+.timetable-table th:first-child,
+.timetable-table td:first-child {
+  width: 100px;
+  min-width: 100px;
+  background-color: #F1F6FC;
+  font-weight: 600;
+  color: var(--color-navy);
+  vertical-align: middle;
+}
+
+.timetable-cell {
+  position: relative;
+  height: 100%;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-radius: 4px;
+}
+
+.timetable-cell:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.timetable-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background-color: var(--color-accent-primary-muted);
+  border-radius: 6px;
+  border-left: 3px solid var(--color-accent-primary);
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.timetable-entry.conflict {
+  border-left-color: var(--color-danger);
+}
+
+.timetable-entry.inactive {
+  opacity: 0.6;
+  border-left-color: var(--color-text-secondary);
+}
+
+.subject-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-navy);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-name {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty-cell-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.2s;
+  color: var(--color-text-tertiary);
+  font-size: 1.2rem;
+}
+
+.timetable-cell:hover .empty-cell-indicator {
+  opacity: 0.5;
+}

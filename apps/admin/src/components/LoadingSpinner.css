@@ -1,0 +1,27 @@
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xl);
+}
+
+.loading-spinner__ring {
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent-primary);
+  border-radius: 50%;
+  animation: spinner-rotate 0.7s linear infinite;
+}
+
+.loading-spinner__ring--sm { width: 20px; height: 20px; }
+.loading-spinner__ring--md { width: 32px; height: 32px; }
+.loading-spinner__ring--lg { width: 48px; height: 48px; }
+
+.loading-spinner__label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+}
+
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}

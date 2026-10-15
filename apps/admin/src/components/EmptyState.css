@@ -1,0 +1,32 @@
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-5xl) var(--spacing-xl);
+  text-align: center;
+}
+
+.empty-state__icon {
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--spacing-lg);
+  opacity: 0.5;
+}
+
+.empty-state__message {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.empty-state__description {
+  font-size: var(--font-size-base);
+  color: var(--color-text-tertiary);
+  max-width: 360px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.empty-state__action {
+  margin-top: var(--spacing-sm);
+}

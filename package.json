@@ -6,7 +6,12 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev -w apps/admin\" \"npm run dev -w apps/server\""
+    "dev": "concurrently \"npm run dev -w apps/admin\" \"npm run dev -w apps/server\"",
+    "dev:admin": "npm run dev -w apps/admin",
+    "dev:server": "npm run dev -w apps/server",
+    "dev:student": "npm run start -w apps/student",
+    "dev:professor": "npm run start -w apps/professor",
+    "build:shared": "npm run build -w packages/shared"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

@@ -1,0 +1,39 @@
+.students-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.students-page__filters {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  background-color: var(--bg-surface);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.students-page__filter-group {
+  display: flex;
+  gap: 16px;
+}
+
+.students-page__content {
+  background-color: var(--bg-surface);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .students-page__filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .students-page__filter-group {
+    flex-direction: column;
+  }
+}

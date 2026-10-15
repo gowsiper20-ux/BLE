@@ -1,0 +1,12 @@
+.timetable-page {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  background-color: var(--surface-color);
+}

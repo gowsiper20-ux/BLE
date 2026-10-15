@@ -1,0 +1,10 @@
+.dashboard-layout {
+  min-height: 100vh;
+}
+
+.dashboard-layout__main {
+  margin-left: var(--sidebar-width);
+  margin-top: var(--topbar-height);
+  padding: var(--spacing-2xl);
+  min-height: calc(100vh - var(--topbar-height));
+}

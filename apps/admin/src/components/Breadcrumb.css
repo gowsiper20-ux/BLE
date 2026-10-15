@@ -1,0 +1,30 @@
+.breadcrumb__list {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.breadcrumb__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.breadcrumb__separator {
+  color: var(--color-text-tertiary);
+}
+
+.breadcrumb__link {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.breadcrumb__link:hover {
+  color: var(--color-text-secondary);
+}
+
+.breadcrumb__current {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}

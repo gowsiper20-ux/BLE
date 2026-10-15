@@ -1,0 +1,73 @@
+.placeholder-page__card {
+  max-width: 640px;
+}
+
+.placeholder-page__content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-lg);
+}
+
+.placeholder-page__icon {
+  color: var(--color-accent-primary);
+  opacity: 0.6;
+}
+
+.placeholder-page__title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.placeholder-page__desc {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+  max-width: 480px;
+}
+
+.placeholder-page__features {
+  width: 100%;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.placeholder-page__features-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--spacing-md);
+}
+
+.placeholder-page__features-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.placeholder-page__feature {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+}
+
+.placeholder-page__feature svg {
+  color: var(--color-accent-primary);
+  flex-shrink: 0;
+}
+
+.placeholder-page__badge {
+  display: inline-flex;
+  padding: 4px 12px;
+  background: var(--color-accent-secondary-muted);
+  color: var(--color-accent-secondary);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+}
