@@ -5,7 +5,7 @@ import Button from '../Button';
 import { useToast } from '../../hooks/useToast';
 import { useApi } from '../../hooks/useApi';
 import { timetableService } from '../../services/timetableService';
-import type { ApiResponse, TimetableEntry, Period, ClassSubject } from '../../types';
+import type { ApiResponse, TimetableEntry, Period } from '../../types';
 
 interface Props {
   isOpen: boolean;

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import PageHeader from '../components/PageHeader';
 import Card from '../components/Card';
 import DataTable from '../components/DataTable';
-import Icon from '../components/Icon';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
 import { settingsService } from '../services/settingsService';

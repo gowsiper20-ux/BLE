@@ -4,7 +4,7 @@ import LoadingSpinner from './LoadingSpinner';
 import EmptyState from './EmptyState';
 import './DataTable.css';
 
-interface Column<T> {
+export interface Column<T> {
   key: string;
   label: string;
   sortable?: boolean;

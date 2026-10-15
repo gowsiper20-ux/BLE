@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import PageHeader from '../components/PageHeader';
-import DataTable from '../components/DataTable';
+import DataTable, { type Column } from '../components/DataTable';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
@@ -72,25 +72,25 @@ export default function AuditLogsPage() {
     return <span className={cls}>{action}</span>;
   };
 
-  const columns = [
+  const columns: Column<AuditLog>[] = [
     { 
       key: 'createdAt', 
       label: 'Date & Time',
-      render: (val: any) => new Date(val).toLocaleString()
+      render: (value) => new Date(value as string).toLocaleString()
     },
     { key: 'actorName', label: 'Actor' },
     { key: 'actorRole', label: 'Role' },
     { 
       key: 'action', 
       label: 'Action',
-      render: (val: any) => getActionBadge(val)
+      render: (value) => getActionBadge(value as string)
     },
     { key: 'entityType', label: 'Entity' },
     { key: 'description', label: 'Description' },
     {
       key: 'actions',
       label: 'Details',
-      render: (_: any, row: AuditLog) => (
+      render: (_, row) => (
         <button className="btn btn--outline btn--sm" onClick={() => setSelectedLog(row)}>
           View
         </button>
@@ -169,11 +169,11 @@ export default function AuditLogsPage() {
             <button className="btn btn--outline" onClick={fetchLogs}>Retry</button>
           </div>
         ) : (
-          <DataTable
+          <DataTable<AuditLog>
             columns={columns}
             data={logs}
-            keyExtractor={(row) => row.id}
-            isLoading={loading}
+            keyField="id"
+            loading={loading}
             emptyMessage={
               search || actionFilter || entityFilter || dateFrom || dateTo 
                 ? "No audit logs match the selected filters." 
