@@ -3,6 +3,9 @@ import { db } from '../src/db';
 import { subjects, classSubjects } from '../src/db/schema/subjects';
 
 async function clearSubjects() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Data cleanup scripts are disabled in production.');
+  }
   console.log('Clearing subject data...');
 
   try {

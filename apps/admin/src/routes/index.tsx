@@ -7,10 +7,8 @@ import AcademicYearsPage from '../pages/AcademicYearsPage';
 import BatchesPage from '../pages/BatchesPage';
 import RegulationsPage from '../pages/RegulationsPage';
 import ClassesPage from '../pages/ClassesPage';
-import ClassDetailsPage from '../pages/ClassDetailsPage';
 import StudentsPage from '../pages/StudentsPage';
 import StaffPage from '../pages/StaffPage';
-import StaffDetailsPage from '../pages/StaffDetailsPage';
 import CounselorsPage from '../pages/CounselorsPage';
 import SubjectsPage from '../pages/SubjectsPage';
 import SubjectDetailsPage from '../pages/SubjectDetailsPage';
@@ -42,10 +40,10 @@ export const router = createBrowserRouter([
       { path: 'batches', element: <BatchesPage /> },
       { path: 'regulations', element: <RegulationsPage /> },
       { path: 'classes', element: <ClassesPage /> },
-      { path: 'classes/:id', element: <ClassDetailsPage /> },
+      { path: 'classes/:id', element: <Navigate to="/classes" replace /> },
       { path: 'students', element: <StudentsPage /> },
       { path: 'staff', element: <StaffPage /> },
-      { path: 'staff/:id', element: <StaffDetailsPage /> },
+      { path: 'staff/:id', element: <Navigate to="/staff" replace /> },
       { path: 'class-counselors', element: <CounselorsPage /> },
       { path: 'subjects', element: <SubjectsPage /> },
       { path: 'subjects/:id', element: <SubjectDetailsPage /> },

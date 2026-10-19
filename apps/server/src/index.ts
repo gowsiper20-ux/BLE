@@ -19,6 +19,7 @@ import { auditRoutes } from "./routes/audit";
 import { settingsRoutes } from "./routes/settings";
 import { dashboardRoutes } from "./routes/dashboard";
 import { authenticate } from "./middlewares/auth.middleware";
+import { msGraphService } from "./services/ms-graph.service";
 
 const app = new Hono();
 
@@ -49,7 +50,6 @@ app.use("/api/*", async (c, next) => {
   
   // Whitelist paths that don't need authentication
   const whitelist = [
-    "/api/auth/login",
     "/api/auth/student/login",
     "/api/auth/microsoft",
     "/api/auth/logout",
@@ -92,6 +92,24 @@ app.onError((err, c) => {
 const port = parseInt(process.env.PORT || "3000", 10);
 
 if (process.env.NODE_ENV !== 'test') {
+  const syncIntervalMinutes = Number(process.env.MICROSOFT_SYNC_INTERVAL_MINUTES || "0");
+  if (!Number.isInteger(syncIntervalMinutes) || syncIntervalMinutes < 0 || syncIntervalMinutes > 10_080) {
+    throw new Error("MICROSOFT_SYNC_INTERVAL_MINUTES must be an integer between 0 and 10080.");
+  }
+  if (syncIntervalMinutes > 0) {
+    if (!msGraphService.isConfigured()) {
+      throw new Error("Scheduled directory sync requires MICROSOFT_TENANT_ID, MICROSOFT_CLIENT_ID, and MICROSOFT_CLIENT_SECRET.");
+    }
+    const timer = setInterval(() => {
+      void msGraphService.syncDirectory().catch((error: unknown) => {
+        const errorType = error instanceof Error ? error.name : "UnknownError";
+        console.error("Scheduled Microsoft Graph synchronization failed.", { errorType });
+      });
+    }, syncIntervalMinutes * 60_000);
+    timer.unref();
+    console.info("Microsoft Graph synchronization scheduler enabled.", { intervalMinutes: syncIntervalMinutes });
+  }
+
   serve(
     {
       fetch: app.fetch,

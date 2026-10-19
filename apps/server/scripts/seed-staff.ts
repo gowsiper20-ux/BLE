@@ -5,6 +5,9 @@ import { classes, academicYears } from '../src/db/schema/academic';
 import { eq, and } from 'drizzle-orm';
 
 async function seedStaff() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Development seed data must never be written to production.');
+  }
   console.log('Seeding roles...');
   const roleNames = [
     { name: 'ADMIN', description: 'Full administrative access.' },

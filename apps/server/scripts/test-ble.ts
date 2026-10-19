@@ -14,6 +14,18 @@ import { BleAttendanceService } from '../src/services/ble-attendance.service';
 const bleService = new BleAttendanceService();
 
 async function runTests() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error('BLE test fixtures require a dedicated test database.');
+  const databaseTarget = new URL(databaseUrl);
+  const databaseName = decodeURIComponent(databaseTarget.pathname.replace(/^\//, ''));
+  if (
+    process.env.NODE_ENV !== 'test' ||
+    !['localhost', '127.0.0.1', '::1'].includes(databaseTarget.hostname) ||
+    !databaseName.endsWith('_test')
+  ) {
+    throw new Error('Refusing BLE test fixtures: use NODE_ENV=test and a loopback database ending in _test.');
+  }
+
   console.log("Starting BLE Attendance Tests...");
 
   // Setup Test Data

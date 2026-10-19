@@ -3,7 +3,6 @@ import { db } from '../db';
 import { externalIdentities } from '../db/schema/auth';
 import { staff, staffRoles, roles } from '../db/schema/staff';
 import { students } from '../db/schema/students';
-import { classes } from '../db/schema/academic';
 import { eq, and } from 'drizzle-orm';
 import type { UserRole, AuthPrincipal } from '@smart-attendance/shared';
 
@@ -47,8 +46,7 @@ export class MsAuthService {
   }
 
   /**
-   * Validate a Microsoft Entra ID access or ID token.
-   * Enforces signature, issuer, tenant, audience, expiration, and email domain.
+   * Validate a Microsoft Entra ID access token issued for this API.
    */
   async validateMicrosoftToken(token: string): Promise<VerifiedClaims> {
     if (!token || typeof token !== 'string') {
@@ -56,23 +54,19 @@ export class MsAuthService {
     }
 
     const expectedTenantId = process.env.MICROSOFT_TENANT_ID;
-    const expectedAudience = process.env.MICROSOFT_API_AUDIENCE || process.env.MICROSOFT_CLIENT_ID;
+    const expectedAudience = process.env.MICROSOFT_API_AUDIENCE;
+    const requiredScope = process.env.MICROSOFT_API_SCOPE;
     const rawDomains = process.env.COLLEGE_EMAIL_DOMAIN || 'sonatech.ac.in';
-    const allowedDomains = rawDomains
-      .toLowerCase()
-      .split(',')
-      .map((d) => d.trim().replace(/^@/, ''));
 
-    // Check for test mock token in test mode
-    if (
-      (process.env.NODE_ENV === 'test' || process.env.ENABLE_TEST_TOKENS === 'true') &&
-      token.startsWith('test-ms-token:')
-    ) {
+    if (process.env.NODE_ENV === 'test' && token.startsWith('test-ms-token:')) {
       return this.parseTestToken(token, expectedTenantId, rawDomains);
     }
 
     if (!expectedTenantId) {
       throw new Error('CONFIG_ERROR: MICROSOFT_TENANT_ID is not configured.');
+    }
+    if (!expectedAudience || !requiredScope) {
+      throw new Error('CONFIG_ERROR: MICROSOFT_API_AUDIENCE and MICROSOFT_API_SCOPE must be configured.');
     }
 
     const jwks = this.getJwks(expectedTenantId);
@@ -83,9 +77,8 @@ export class MsAuthService {
       const result = await jwtVerify(token, jwks, {
         issuer: [
           `https://login.microsoftonline.com/${expectedTenantId}/v2.0`,
-          `https://sts.windows.net/${expectedTenantId}/`,
         ],
-        audience: expectedAudience ? [expectedAudience] : undefined,
+        audience: expectedAudience,
       });
       payload = result.payload;
     } catch (err: any) {
@@ -105,21 +98,18 @@ export class MsAuthService {
     }
 
     // 2. Extract stable OID
-    const oid = payload.oid || payload.sub;
+    const oid = payload.oid;
     if (!oid) {
       throw new Error('MISSING_OID: Token does not contain an object identifier (oid).');
     }
 
-    // 3. Extract and validate college email
-    const email = (payload.preferred_username || payload.email || payload.upn || '').toLowerCase().trim();
-    if (!email) {
-      throw new Error('MISSING_EMAIL: Token does not contain an email or preferred_username claim.');
+    const scopes = typeof payload.scp === 'string' ? payload.scp.split(' ') : [];
+    if (!scopes.includes(requiredScope)) {
+      throw new Error(`MISSING_SCOPE: Token does not contain the required API scope '${requiredScope}'.`);
     }
 
-    const matchesDomain = allowedDomains.some((d) => email.endsWith(`@${d}`));
-    if (!matchesDomain) {
-      throw new Error(`INVALID_DOMAIN: Account '${email}' does not belong to '@${allowedDomains[0]}'.`);
-    }
+    // Email is profile data only; identity resolution always uses tenant ID plus object ID.
+    const email = (payload.preferred_username || payload.email || payload.upn || '').toLowerCase().trim();
 
     const name = payload.name || payload.preferred_username || email;
 
@@ -179,11 +169,10 @@ export class MsAuthService {
 
   /**
    * Resolve an authenticated Microsoft external identity to an application AuthPrincipal.
-   * If the user is enrolled in PostgreSQL, links their external identity if not already linked.
-   * If not enrolled, fails closed (UNPROVISIONED).
+   * Resolves only an explicitly mapped tenant/object identity and fails closed otherwise.
    */
   async resolveUserIdentity(claims: VerifiedClaims): Promise<AuthPrincipal> {
-    const { oid, tid, email, name } = claims;
+    const { oid, tid } = claims;
 
     // 1. Look up existing external identity mapping
     const existingIdentity = await db
@@ -206,129 +195,8 @@ export class MsAuthService {
       }
     }
 
-    // 2. If not mapped yet, search staff by collegeEmail or existing microsoftUserId
-    const staffMatch = await db
-      .select()
-      .from(staff)
-      .where(eq(staff.collegeEmail, email))
-      .then((rows) => rows[0]);
-
-    if (staffMatch) {
-      if (staffMatch.status !== 'ACTIVE') {
-        throw new Error('ACCOUNT_INACTIVE: Your staff account is currently inactive. Contact your administrator.');
-      }
-
-      // Link external identity
-      await db.insert(externalIdentities).values({
-        staffId: staffMatch.id,
-        provider: 'MICROSOFT',
-        tenantId: tid,
-        oid,
-        email,
-        status: 'ACTIVE',
-      });
-
-      // Update staff record with microsoftUserId if empty
-      if (!staffMatch.microsoftUserId) {
-        await db.update(staff).set({ microsoftUserId: oid, updatedAt: new Date() }).where(eq(staff.id, staffMatch.id));
-      }
-
-      return this.resolveStaffPrincipal(staffMatch.id, oid, tid);
-    }
-
-    // 3. Search students by collegeEmail or existing microsoftUserId
-    const studentMatch = await db
-      .select()
-      .from(students)
-      .where(eq(students.collegeEmail, email))
-      .then((rows) => rows[0]);
-
-    if (studentMatch) {
-      if (studentMatch.status !== 'ACTIVE') {
-        throw new Error('ACCOUNT_INACTIVE: Your student account is currently inactive or suspended.');
-      }
-
-      // Link external identity
-      await db.insert(externalIdentities).values({
-        studentId: studentMatch.id,
-        provider: 'MICROSOFT',
-        tenantId: tid,
-        oid,
-        email,
-        status: 'ACTIVE',
-      });
-
-      if (!studentMatch.microsoftUserId) {
-        await db.update(students).set({ microsoftUserId: oid, updatedAt: new Date() }).where(eq(students.id, studentMatch.id));
-      }
-
-      return this.resolveStudentPrincipal(studentMatch.id, oid, tid);
-    }
-
-    // 4. Auto-provisioning for college accounts (if enabled in college demo/project mode)
-    if (process.env.AUTO_PROVISION_COLLEGE_ACCOUNTS === 'true') {
-      const emailPrefix = email.split('@')[0];
-      const isStudent = /\d{4,}/.test(emailPrefix) || emailPrefix.includes('.it') || emailPrefix.includes('student');
-
-      if (isStudent) {
-        const defaultClass = await db.select().from(classes).where(eq(classes.status, 'ACTIVE')).limit(1).then((r) => r[0]);
-        if (defaultClass) {
-          const regNumber = emailPrefix.match(/\d{10,}/)?.[0] || `6178${Date.now().toString().slice(-8)}`;
-          const [newStudent] = await db.insert(students).values({
-            registerNumber: regNumber,
-            name: name || 'Student',
-            collegeEmail: email,
-            classId: defaultClass.id,
-            microsoftUserId: oid,
-            status: 'ACTIVE',
-          }).returning();
-
-          await db.insert(externalIdentities).values({
-            studentId: newStudent.id,
-            provider: 'MICROSOFT',
-            tenantId: tid,
-            oid,
-            email,
-            status: 'ACTIVE',
-          });
-
-          return this.resolveStudentPrincipal(newStudent.id, oid, tid);
-        }
-      }
-
-      // Auto-provision as Staff member
-      const staffCode = `IT-FAC-${Date.now().toString().slice(-4)}`;
-      const [newStaff] = await db.insert(staff).values({
-        staffCode,
-        name: name || 'Faculty Member',
-        collegeEmail: email,
-        microsoftUserId: oid,
-        status: 'ACTIVE',
-      }).returning();
-
-      const staffRole = await db.select().from(roles).where(eq(roles.name, 'STAFF')).then((r) => r[0]);
-      if (staffRole) {
-        await db.insert(staffRoles).values({
-          staffId: newStaff.id,
-          roleId: staffRole.id,
-        });
-      }
-
-      await db.insert(externalIdentities).values({
-        staffId: newStaff.id,
-        provider: 'MICROSOFT',
-        tenantId: tid,
-        oid,
-        email,
-        status: 'ACTIVE',
-      });
-
-      return this.resolveStaffPrincipal(newStaff.id, oid, tid);
-    }
-
-    // 5. Not provisioned in database: Fail Closed
     throw new Error(
-      `UNPROVISIONED_ACCOUNT: Your account '${email}' is not registered in the SONA Smart Attendance system. Please contact your department administrator.`
+      `UNPROVISIONED_ACCOUNT: Microsoft identity '${tid}/${oid}' is not explicitly mapped to an application account.`
     );
   }
 
@@ -345,11 +213,8 @@ export class MsAuthService {
       .innerJoin(roles, eq(staffRoles.roleId, roles.id))
       .where(eq(staffRoles.staffId, staffId));
 
-    const roleNames = staffRoleRows.map((r) => r.roleName as UserRole);
-    // Ensure at least STAFF role if none assigned
-    if (roleNames.length === 0) {
-      roleNames.push('STAFF');
-    }
+    const storedRoleNames = staffRoleRows.map((r) => r.roleName as UserRole);
+    const roleNames = process.env.NODE_ENV === 'production' ? [] : storedRoleNames;
 
     return {
       id: staffUser.id,
@@ -373,7 +238,7 @@ export class MsAuthService {
       id: studentUser.id,
       name: studentUser.name,
       collegeEmail: studentUser.collegeEmail,
-      roles: ['STUDENT'],
+      roles: process.env.NODE_ENV === 'production' ? [] : ['STUDENT'],
       userType: 'STUDENT',
       registerNumber: studentUser.registerNumber,
       microsoftUserId: oid,

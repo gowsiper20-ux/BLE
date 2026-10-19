@@ -1,23 +1,22 @@
 import { Hono } from "hono";
 import { StaffService } from "../services/staff.service";
 import { TimetableRepository } from "../repositories/timetable.repository";
-import { requireRole, requireStaffOrAdmin, requireHodOrAdmin } from "../middlewares/auth.middleware";
+import { requireStaffOrAdmin, requireHodOrAdmin } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const staffRoutes = new Hono();
 const service = new StaffService();
 const timetableRepo = new TimetableRepository();
 
-function getActorFromContext(c: any) {
-  const user = c.get('user') as AuthPrincipal | undefined;
-  return {
-    actorId: user?.id,
-    actorName: user?.name || user?.collegeEmail || 'System User',
-    actorRole: user?.roles?.[0] || 'ADMIN',
-    ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1',
-    userAgent: c.req.header('user-agent'),
-  };
-}
+staffRoutes.use("*", async (c, next) => {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method)) {
+    return c.json({
+      success: false,
+      error: { code: "DIRECTORY_READ_ONLY", message: "Staff directory identities and roles are read-only and managed by trusted synchronization." },
+    }, 405);
+  }
+  await next();
+});
 
 function handleStaffError(c: any, error: any) {
   const msg = error?.message || 'An unexpected error occurred.';
@@ -85,82 +84,10 @@ staffRoutes.get("/:id", requireStaffOrAdmin, async (c) => {
   }
 });
 
-// Creating new staff: ADMIN only
-staffRoutes.post("/", requireRole("ADMIN"), async (c) => {
-  try {
-    const actor = getActorFromContext(c);
-    const body = await c.req.json();
-    const data = await service.createStaff(body, actor);
-    return c.json({ success: true, data }, 201);
-  } catch (error: any) {
-    return handleStaffError(c, error);
-  }
-});
-
-// Updating staff: ADMIN only
-staffRoutes.patch("/:id", requireRole("ADMIN"), async (c) => {
-  try {
-    const actor = getActorFromContext(c);
-    const body = await c.req.json();
-    const data = await service.updateStaff(c.req.param("id")!, body, actor);
-    return c.json({ success: true, data });
-  } catch (error: any) {
-    return handleStaffError(c, error);
-  }
-});
-
-// Changing staff active status: ADMIN only
-staffRoutes.patch("/:id/status", requireRole("ADMIN"), async (c) => {
-  try {
-    const actor = getActorFromContext(c);
-    const body = await c.req.json();
-    const data = await service.updateStaffStatus(c.req.param("id")!, body.status, actor);
-    return c.json({ success: true, data });
-  } catch (error: any) {
-    return handleStaffError(c, error);
-  }
-});
-
-// Deleting staff: ADMIN only
-staffRoutes.delete("/:id", requireRole("ADMIN"), async (c) => {
-  try {
-    const actor = getActorFromContext(c);
-    await service.deleteStaff(c.req.param("id")!, actor);
-    return c.json({ success: true });
-  } catch (error: any) {
-    return handleStaffError(c, error);
-  }
-});
-
-// --- Roles nested routes ---
-
 // View staff roles: Staff member (self) or ADMIN/HOD
 staffRoutes.get("/:id/roles", requireStaffOrAdmin, async (c) => {
   try {
     const data = await service.getStaffRoles(c.req.param("id")!);
-    return c.json({ success: true, data });
-  } catch (error: any) {
-    return handleStaffError(c, error);
-  }
-});
-
-// Assigning role: ADMIN only (prevents privilege escalation)
-staffRoutes.post("/:id/roles", requireRole("ADMIN"), async (c) => {
-  try {
-    const actor = getActorFromContext(c);
-    const body = await c.req.json();
-    const data = await service.assignRole(c.req.param("id")!, body.role, actor);
-    return c.json({ success: true, data }, 201);
-  } catch (error: any) {
-    return handleStaffError(c, error);
-  }
-});
-
-// Removing role: ADMIN only
-staffRoutes.delete("/:id/roles/:roleName", requireRole("ADMIN"), async (c) => {
-  try {
-    const actor = getActorFromContext(c);
-    const data = await service.removeRole(c.req.param("id")!, c.req.param("roleName")!, actor);
     return c.json({ success: true, data });
   } catch (error: any) {
     return handleStaffError(c, error);

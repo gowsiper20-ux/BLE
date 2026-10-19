@@ -4,6 +4,9 @@ import { sql } from 'drizzle-orm';
 import { academicYears } from '../src/db/schema/academic';
 
 async function clearDuplicate() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Data cleanup scripts are disabled in production.');
+  }
   console.log('Fetching academic years...');
   const years = await db.select().from(academicYears);
   

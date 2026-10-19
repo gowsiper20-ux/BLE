@@ -71,6 +71,13 @@
       "when": 1792350000000,
       "tag": "0009_attendance_corrections",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792400000000,
+      "tag": "0010_directory_coverage",
+      "breakpoints": true
     }
   ]
 }

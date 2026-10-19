@@ -158,15 +158,30 @@ describe('Microsoft Entra ID Authentication & RBAC Test Suite', () => {
     it('should reject when token is empty or missing', async () => {
       await expect(msAuthService.validateMicrosoftToken('')).rejects.toThrow(/MISSING_TOKEN/);
     });
+
+    it('should not accept test tokens outside the test environment even when explicitly enabled', async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'development';
+      process.env.ENABLE_TEST_TOKENS = 'true';
+      process.env.MICROSOFT_API_AUDIENCE = 'api://test-api';
+      process.env.MICROSOFT_API_SCOPE = 'access_as_user';
+      try {
+        await expect(msAuthService.validateMicrosoftToken('test-ms-token:{}')).rejects.toThrow(/TOKEN_INVALID/);
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+        delete process.env.ENABLE_TEST_TOKENS;
+      }
+    });
   });
 
   describe('2. User Provisioning & Identity Resolution', () => {
-    it('should reject a valid Entra identity that is not enrolled in SONA database (Fail Closed)', async () => {
+    it('should reject an email match without an explicit tenant/object mapping', async () => {
+      const enrolledStaff = await db.select().from(staff).where(eq(staff.id, testStaffId)).then((rows) => rows[0]);
       const claims = {
         oid: 'oid-unprovisioned-999',
         tid: TEST_TENANT,
         sub: 'oid-unprovisioned-999',
-        email: `unregistered.user@${TEST_COLLEGE_DOMAIN}`,
+        email: enrolledStaff.collegeEmail,
         name: 'Unregistered User',
         roles: [],
       };
@@ -176,6 +191,14 @@ describe('Microsoft Entra ID Authentication & RBAC Test Suite', () => {
 
     it('should reject an enrolled user whose status is INACTIVE', async () => {
       const inactiveStaff = await db.select().from(staff).where(eq(staff.id, inactiveStaffId)).then((rows) => rows[0]);
+      await db.insert(externalIdentities).values({
+        staffId: inactiveStaffId,
+        provider: 'MICROSOFT',
+        tenantId: TEST_TENANT,
+        oid: 'oid-inactive-000',
+        email: inactiveStaff.collegeEmail,
+        status: 'ACTIVE',
+      });
       const claims = {
         oid: 'oid-inactive-000',
         tid: TEST_TENANT,
@@ -188,9 +211,17 @@ describe('Microsoft Entra ID Authentication & RBAC Test Suite', () => {
       await expect(msAuthService.resolveUserIdentity(claims)).rejects.toThrow(/ACCOUNT_INACTIVE/);
     });
 
-    it('should successfully resolve an enrolled active staff member and link external identity', async () => {
+    it('should resolve an active staff member only through an explicit tenant/object mapping', async () => {
       const enrolledStaff = await db.select().from(staff).where(eq(staff.id, testStaffId)).then((rows) => rows[0]);
       const oid = `oid-staff-${Date.now()}`;
+      await db.insert(externalIdentities).values({
+        staffId: testStaffId,
+        provider: 'MICROSOFT',
+        tenantId: TEST_TENANT,
+        oid,
+        email: enrolledStaff.collegeEmail,
+        status: 'ACTIVE',
+      });
       const claims = {
         oid,
         tid: TEST_TENANT,
@@ -206,7 +237,7 @@ describe('Microsoft Entra ID Authentication & RBAC Test Suite', () => {
       expect(principal.roles).toContain('STAFF');
       expect(principal.userType).toBe('STAFF');
 
-      // Verify externalIdentities record was created
+      // Verify the explicit mapping remains keyed by the tenant and object ID.
       const identityRecord = await db
         .select()
         .from(externalIdentities)
@@ -274,7 +305,51 @@ describe('Microsoft Entra ID Authentication & RBAC Test Suite', () => {
       expect(body.success).toBe(true);
     });
 
-    it('should prevent privilege escalation: STAFF cannot assign roles via POST /api/staff/:id/roles', async () => {
+    it('should reject student directory mutations even for an administrator', async () => {
+      const adminPrincipal = {
+        id: adminStaffId,
+        name: 'Test Admin',
+        collegeEmail: `admin@${TEST_COLLEGE_DOMAIN}`,
+        roles: ['ADMIN'] as any,
+        userType: 'STAFF' as any,
+      };
+      const adminToken = await msAuthService.createSessionToken(adminPrincipal);
+      const response = await app.request('/api/students', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ registerNumber: '12345', name: 'Not Created' }),
+      });
+
+      expect(response.status).toBe(405);
+      expect((await response.json()).error.code).toBe('DIRECTORY_READ_ONLY');
+    });
+
+    it('should reject staff directory mutations even for an administrator', async () => {
+      const adminPrincipal = {
+        id: adminStaffId,
+        name: 'Test Admin',
+        collegeEmail: `admin@${TEST_COLLEGE_DOMAIN}`,
+        roles: ['ADMIN'] as any,
+        userType: 'STAFF' as any,
+      };
+      const adminToken = await msAuthService.createSessionToken(adminPrincipal);
+      const response = await app.request('/api/staff', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ staffCode: 'NOT-CREATED', name: 'Not Created' }),
+      });
+
+      expect(response.status).toBe(405);
+      expect((await response.json()).error.code).toBe('DIRECTORY_READ_ONLY');
+    });
+
+    it('should reject role assignment because the staff directory is read-only', async () => {
       const staffPrincipal = {
         id: testStaffId,
         name: 'Test Staff',
@@ -293,16 +368,23 @@ describe('Microsoft Entra ID Authentication & RBAC Test Suite', () => {
         body: JSON.stringify({ role: 'ADMIN' }),
       });
 
-      expect(res.status).toBe(403);
-      const body = await res.json();
-      expect(body.success).toBe(false);
-      expect(body.error.code).toBe('FORBIDDEN');
+      expect(res.status).toBe(405);
+      expect((await res.json()).error.code).toBe('DIRECTORY_READ_ONLY');
     });
 
-    it('should complete full sign-in flow via POST /api/auth/microsoft', async () => {
+    it('should complete sign-in only for an explicitly mapped identity', async () => {
       const enrolledStaff = await db.select().from(staff).where(eq(staff.id, testStaffId)).then((rows) => rows[0]);
+      const oid = `oid-flow-${Date.now()}`;
+      await db.insert(externalIdentities).values({
+        staffId: testStaffId,
+        provider: 'MICROSOFT',
+        tenantId: TEST_TENANT,
+        oid,
+        email: enrolledStaff.collegeEmail,
+        status: 'ACTIVE',
+      });
       const mockToken = `test-ms-token:${JSON.stringify({
-        oid: `oid-flow-${Date.now()}`,
+        oid,
         tid: TEST_TENANT,
         email: enrolledStaff.collegeEmail,
         name: enrolledStaff.name,
@@ -317,12 +399,12 @@ describe('Microsoft Entra ID Authentication & RBAC Test Suite', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
-      expect(body.token).toBeDefined();
+      expect(res.headers.get('set-cookie')).toContain('admin_token');
       expect(body.user.collegeEmail).toBe(enrolledStaff.collegeEmail);
       expect(body.user.roles).toContain('STAFF');
     });
 
-    it('should reject POST /api/auth/microsoft for non-college domain with 401', async () => {
+    it('should reject POST /api/auth/microsoft for a non-college test identity', async () => {
       const mockToken = `test-ms-token:${JSON.stringify({
         oid: 'oid-intruder-http',
         tid: TEST_TENANT,

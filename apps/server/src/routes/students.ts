@@ -1,10 +1,9 @@
 import { Hono } from "hono";
 import { StudentService } from "../services/student.service";
 import { AttendanceSessionService } from "../services/attendance-session.service";
-import { requireStudentAuth, requireRole, requireHodOrAdmin, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireStudentAuth, requireStaffOrAdmin } from "../middlewares/auth.middleware";
 import { BleTokenService } from "../services/ble-token.service";
 import { StudentBleDeviceRepository } from '../repositories/student-ble-device.repository';
-import * as xlsx from 'xlsx';
 
 export const studentRoutes = new Hono<{ Variables: { student: any } }>();
 const service = new StudentService();
@@ -12,16 +11,17 @@ const attendanceService = new AttendanceSessionService();
 const bleTokenService = new BleTokenService();
 const deviceRepo = new StudentBleDeviceRepository();
 
-function getActorFromContext(c: any) {
-  const user = c.get('user');
-  return {
-    actorId: user?.id,
-    actorName: user?.name || user?.email || 'System User',
-    actorRole: user?.roles?.[0] || 'ADMIN',
-    ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1',
-    userAgent: c.req.header('user-agent'),
-  };
-}
+studentRoutes.use("*", async (c, next) => {
+  const directoryMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method);
+  const operationalDeviceRoute = c.req.path.includes("/ble-devices");
+  if (directoryMutation && !operationalDeviceRoute) {
+    return c.json({
+      success: false,
+      error: { code: "DIRECTORY_READ_ONLY", message: "Student directory identities are read-only and managed by synchronization." },
+    }, 405);
+  }
+  await next();
+});
 
 function handleStudentError(c: any, error: any) {
   const msg = error?.message || 'An unexpected error occurred.';
@@ -51,8 +51,6 @@ function handleStudentError(c: any, error: any) {
   return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: msg } }, 500);
 }
 
-// --- Student CRUD ---
-
 studentRoutes.get("/", requireStaffOrAdmin, async (c) => {
   try {
     const search = c.req.query("search");
@@ -78,107 +76,6 @@ studentRoutes.get("/:id", requireStaffOrAdmin, async (c) => {
   } catch (error: any) {
     return handleStudentError(c, error);
   }
-});
-
-studentRoutes.post("/", requireRole('ADMIN', 'HOD', 'DEPUTY_HOD'), async (c) => {
-  try {
-    const body = await c.req.json();
-    const data = await service.createStudent(body, getActorFromContext(c));
-    return c.json({ success: true, data }, 201);
-  } catch (error: any) {
-    return handleStudentError(c, error);
-  }
-});
-
-studentRoutes.patch("/:id", requireRole('ADMIN', 'HOD', 'DEPUTY_HOD'), async (c) => {
-  try {
-    const body = await c.req.json();
-    const data = await service.updateStudent(c.req.param("id")!, body, getActorFromContext(c));
-    return c.json({ success: true, data });
-  } catch (error: any) {
-    return handleStudentError(c, error);
-  }
-});
-
-studentRoutes.patch("/:id/status", requireRole('ADMIN', 'HOD', 'DEPUTY_HOD'), async (c) => {
-  try {
-    const body = await c.req.json();
-    const data = await service.updateStudentStatus(c.req.param("id")!, body.status, getActorFromContext(c));
-    return c.json({ success: true, data });
-  } catch (error: any) {
-    return handleStudentError(c, error);
-  }
-});
-
-studentRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
-  try {
-    const softParam = c.req.query("soft");
-    if (softParam === 'true') {
-      await service.updateStudentStatus(c.req.param("id")!, 'INACTIVE', getActorFromContext(c));
-    } else {
-      await service.deleteStudent(c.req.param("id")!, getActorFromContext(c));
-    }
-    return c.json({ success: true });
-  } catch (error: any) {
-    return handleStudentError(c, error);
-  }
-});
-
-// --- Bulk Import ---
-
-studentRoutes.post("/import/validate", requireHodOrAdmin, async (c) => {
-  try {
-    const formData = await c.req.parseBody();
-    const file = formData['file'] as File;
-
-    if (!file) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'No file uploaded.' } }, 400);
-    }
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    
-    const preview = await service.validateImportFile(buffer, file.name, file.type);
-    
-    return c.json({ success: true, data: preview });
-  } catch (error: any) {
-    return handleStudentError(c, error);
-  }
-});
-
-studentRoutes.post("/import/confirm", requireHodOrAdmin, async (c) => {
-  try {
-    const body = await c.req.json();
-    const result = await service.confirmImport(body.importData, getActorFromContext(c));
-    return c.json({ success: true, data: result });
-  } catch (error: any) {
-    return handleStudentError(c, error);
-  }
-});
-
-studentRoutes.get("/template/csv", requireStaffOrAdmin, async (c) => {
-  const csvContent = 'register_number,name,college_email,class\n61782324106032,Harinarayanan S,61782324106032@sonatech.ac.in,II IT-A';
-  c.header('Content-Type', 'text/csv');
-  c.header('Content-Disposition', 'attachment; filename="students_template.csv"');
-  return c.body(csvContent);
-});
-
-studentRoutes.get("/template/xlsx", requireStaffOrAdmin, async (c) => {
-  const worksheet = xlsx.utils.json_to_sheet([
-    {
-      register_number: '61782324106032',
-      name: 'Harinarayanan S',
-      college_email: '61782324106032@sonatech.ac.in',
-      class: 'II IT-A'
-    }
-  ]);
-  const workbook = xlsx.utils.book_new();
-  xlsx.utils.book_append_sheet(workbook, worksheet, 'Template');
-  const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-  
-  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  c.header('Content-Disposition', 'attachment; filename="students_template.xlsx"');
-  return c.body(buffer);
 });
 
 // --- Mobile Student Attendance Endpoints ---

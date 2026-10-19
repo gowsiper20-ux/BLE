@@ -4,6 +4,9 @@ import { periods } from '../src/db/schema/timetable';
 import { eq } from 'drizzle-orm';
 
 async function seedTimetableBasics() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Development seed data must never be written to production.');
+  }
   console.log('Starting timetable basics seed...');
 
   try {

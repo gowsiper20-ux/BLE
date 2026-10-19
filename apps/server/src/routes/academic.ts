@@ -11,6 +11,21 @@ const staffService = new StaffService();
 const classSubjectService = new ClassSubjectService();
 const timetableRepo = new TimetableRepository();
 
+academicRoutes.use("*", async (c, next) => {
+  const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method);
+  const isBatchOrClass = /\/(?:batches|classes)(?:\/[^/]+)?$/.test(c.req.path);
+  if (isMutation && isBatchOrClass) {
+    return c.json({
+      success: false,
+      error: {
+        code: "ACADEMIC_DIRECTORY_READ_ONLY",
+        message: "Batch and class coverage is sourced from verified directory attributes and cannot be manually created or edited.",
+      },
+    }, 405);
+  }
+  await next();
+});
+
 function getActorFromContext(c: any) {
   const user = c.get('user');
   return {

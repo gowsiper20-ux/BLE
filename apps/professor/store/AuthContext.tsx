@@ -22,23 +22,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (staffCode: string) => {
     setAuthState('AUTHENTICATING');
     try {
-      // Mock development login logic
-      if (process.env.EXPO_PUBLIC_DEV_LOGIN_MODE === 'true') {
+      if (process.env.NODE_ENV === 'test') {
         if (staffCode === 'DEV-STAFF-001') {
-          setTimeout(() => {
-            setUser({
-              id: 'prof-123',
-              name: 'Dr. Kumar',
-              staffCode: 'STF-001',
-              department: 'IT',
-              role: 'STAFF'
-            });
-            setAuthState('AUTHENTICATED');
-          }, 500);
+          setUser({
+            id: 'prof-123',
+            name: 'Test Professor',
+            staffCode: 'TEST-STAFF',
+            department: 'TEST',
+            role: 'STAFF'
+          });
+          setAuthState('AUTHENTICATED');
           return;
         }
+        throw new Error('Invalid test credentials');
       }
-      throw new Error('Invalid mock credentials');
+      throw new Error('Microsoft Entra sign-in is not configured for the professor app.');
     } catch (e) {
       setAuthState('UNAUTHENTICATED');
       throw e;

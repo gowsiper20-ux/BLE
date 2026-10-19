@@ -190,7 +190,7 @@ export const requireStudentAuth = async (c: Context, next: Next) => {
   }
 
   user = c.get('user') as AuthPrincipal | undefined;
-  if (user?.userType !== 'STUDENT' && !user?.roles?.includes('STUDENT')) {
+  if (!user?.roles?.includes('STUDENT')) {
     return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'Student access required.' } }, 403);
   }
 

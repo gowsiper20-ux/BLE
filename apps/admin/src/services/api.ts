@@ -12,21 +12,10 @@ class ApiClient {
 
   setToken(token: string | null) {
     this.token = token;
-    if (typeof window !== 'undefined') {
-      if (token) {
-        sessionStorage.setItem('sona_access_token', token);
-      } else {
-        sessionStorage.removeItem('sona_access_token');
-      }
-    }
   }
 
   getToken(): string | null {
-    if (this.token) return this.token;
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('sona_access_token');
-    }
-    return null;
+    return this.token;
   }
 
   private async request<T>(

@@ -1,169 +1,146 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import Badge from '../components/Badge';
-import Button from '../components/Button';
 import SearchBar from '../components/SearchBar';
 import Select from '../components/Select';
-import ConfirmDialog from '../components/ConfirmDialog';
-import { useToast } from '../hooks/useToast';
-import { staffService } from '../services/staffService';
-import type { Staff, TableColumn } from '../types';
+import { studentService, type DirectoryStudent } from '../services/studentService';
+import { useApi } from '../hooks/useApi';
+import type { ApiResponse } from '../types';
 
-import StaffFormModal from '../components/staff/StaffFormModal';
+interface DirectoryStatus {
+  configured: boolean;
+  totalSynchronizedUsers: number;
+  verifiedItFacultyStaffIdentities: number;
+  verifiedGroupClassifications: boolean;
+  lastSuccessfulFullSync: string | null;
+  latestAttempt: { status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' } | null;
+}
+
+const PAGE_SIZE = 20;
 
 export default function StaffPage() {
-  const { showToast } = useToast();
-  const navigate = useNavigate();
-  
-  // States
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const [staff, setStaff] = useState<DirectoryStudent[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  
-  // Filter States
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRole, setFilterRole] = useState('');
-  const [filterStatus, setFilterStatus] = useState('ACTIVE');
-
-  // UI States
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
-  
-  // Delete
-  const [staffToDelete, setStaffToDelete] = useState<Staff | null>(null);
+  const [accountStatus, setAccountStatus] = useState('');
+  const [sortBy, setSortBy] = useState('displayName');
+  const [sortOrder, setSortOrder] = useState('asc');
+  const { data: statusResponse } = useApi<ApiResponse<DirectoryStatus>>('/api/auth/directory-status');
 
   const fetchStaff = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = await staffService.getStaff({
+      const result = await studentService.getDirectoryStaff({
         search: searchQuery,
-        role: filterRole,
-        status: filterStatus,
+        accountStatus,
         page,
-        limit: 20
+        limit: PAGE_SIZE,
+        sortBy,
+        sortOrder,
       });
-      setStaff(res.staff);
-      setTotal(res.pagination.total);
-    } catch (err) {
-      showToast('error', 'Failed to fetch staff');
+      setStaff(result.identities);
+      setTotal(result.pagination.total);
+    } catch (err: unknown) {
+      setError(err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+        ? err.message
+        : 'Unable to load verified directory staff.');
+      setStaff([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, filterRole, filterStatus, page, showToast]);
+  }, [searchQuery, accountStatus, page, sortBy, sortOrder]);
 
   useEffect(() => {
-    fetchStaff();
+    void Promise.resolve().then(fetchStaff);
   }, [fetchStaff]);
 
-  const handleEdit = (staffRecord: Staff) => {
-    setSelectedStaff(staffRecord);
-    setIsFormOpen(true);
-  };
-
-  const handleAdd = () => {
-    setSelectedStaff(null);
-    setIsFormOpen(true);
-  };
-
-  const handleDelete = async () => {
-    if (!staffToDelete) return;
-    try {
-      await staffService.deleteStaff(staffToDelete.id);
-      showToast('success', 'Staff deleted successfully');
-      fetchStaff();
-    } catch (err: any) {
-      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to delete staff');
-    } finally {
-      setStaffToDelete(null);
-    }
-  };
-
-  const columns: TableColumn<Staff>[] = useMemo(() => [
-    { key: 'staffCode', label: 'Staff Code', sortable: true },
-    { key: 'name', label: 'Name', sortable: true },
-    { key: 'collegeEmail', label: 'College Email', sortable: true },
+  const status = statusResponse?.data;
+  const columns = [
+    { key: 'displayName', label: 'Directory Name', sortable: false },
+    { key: 'email', label: 'Directory Email', sortable: false },
+    { key: 'department', label: 'Directory Department', sortable: false },
     {
-      key: 'roles',
-      label: 'Roles',
-      render: (val: any) => (
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-          {(val as string[])?.map(r => (
-            <Badge key={r} variant="default">{r}</Badge>
-          ))}
-        </div>
-      )
+      key: 'accountEnabled',
+      label: 'Entra Account',
+      render: (value: unknown) => (
+        <Badge variant={value === true ? 'success' : value === false ? 'danger' : 'warning'}>
+          {value === true ? 'Enabled' : value === false ? 'Disabled' : 'Unknown'}
+        </Badge>
+      ),
     },
-    {
-      key: 'status',
-      label: 'Status',
-      render: (val: any) => (
-        <Badge variant={val === 'ACTIVE' ? 'success' : 'danger'}>{val}</Badge>
-      )
-    }
-  ], []);
+  ];
 
-  const actions = (row: Staff) => (
-    <div style={{ display: 'flex', gap: '8px' }}>
-      <Button variant="ghost" size="sm" onClick={() => navigate(`/staff/${row.id}`)}>
-        View
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
-        Edit
-      </Button>
-      {row.status === 'ACTIVE' && (
-        <Button variant="danger" size="sm" onClick={() => setStaffToDelete(row)}>
-          Delete
-        </Button>
-      )}
-    </div>
-  );
+  const emptyMessage = !status?.configured
+    ? 'Microsoft Graph synchronization is not configured.'
+    : !status.lastSuccessfulFullSync
+      ? 'No successful full directory synchronization has completed.'
+      : !status.verifiedGroupClassifications
+        ? 'Verified IT faculty/staff group IDs and approved membership semantics are not configured.'
+        : 'No verified IT faculty/staff identities match these filters.';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <PageHeader
-        title="Staff Management"
+        title="Staff Directory"
         breadcrumbs={[
           { label: 'Home', path: '/dashboard' },
           { label: 'Staff' },
         ]}
-        actions={
-          <Button icon="add" onClick={handleAdd}>
-            Add Staff
-          </Button>
-        }
       />
+      <div role="status" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
+        Read-only directory identities classified only through configured IT faculty/staff Entra groups. Legacy application staff rows and unverified roles are excluded.
+      </div>
+      {status && (
+        <div role="status" style={{ padding: '12px 16px', borderRadius: 6, background: '#F1F6FC', color: '#1E3A8A' }}>
+          Synchronized tenant users: {status.totalSynchronizedUsers} · Verified IT faculty/staff: {status.verifiedItFacultyStaffIdentities} · Last successful full sync: {status.lastSuccessfulFullSync ? new Date(status.lastSuccessfulFullSync).toLocaleString() : 'Never'}
+          {' · Latest attempt: '}{status.latestAttempt?.status || 'None'}
+        </div>
+      )}
+      {error && <div role="alert" style={{ color: '#A11' }}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', backgroundColor: 'var(--bg-surface)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-        <SearchBar 
-          placeholder="Search by code, name or email..."
+        <SearchBar
+          placeholder="Search verified directory name or email..."
           value={searchQuery}
-          onChange={setSearchQuery}
+          onChange={(value) => { setSearchQuery(value); setPage(1); }}
         />
         <div style={{ display: 'flex', gap: '16px' }}>
-          <Select 
+          <Select
             label=""
-            value={filterRole}
-            onChange={setFilterRole}
+            value={accountStatus}
+            onChange={(value) => { setAccountStatus(value); setPage(1); }}
             options={[
-              { value: '', label: 'All Roles' },
-              { value: 'ADMIN', label: 'ADMIN' },
-              { value: 'HOD', label: 'HOD' },
-              { value: 'DEPUTY_HOD', label: 'DEPUTY_HOD' },
-              { value: 'CLASS_COUNSELOR', label: 'CLASS_COUNSELOR' },
-              { value: 'STAFF', label: 'STAFF' }
+              { value: '', label: 'All Account States' },
+              { value: 'enabled', label: 'Enabled' },
+              { value: 'disabled', label: 'Disabled' },
+              { value: 'unknown', label: 'Unknown' },
             ]}
           />
-          <Select 
+          <Select
             label=""
-            value={filterStatus}
-            onChange={setFilterStatus}
+            value={sortBy}
+            onChange={setSortBy}
             options={[
-              { value: '', label: 'All Statuses' },
-              { value: 'ACTIVE', label: 'Active' },
-              { value: 'INACTIVE', label: 'Inactive' }
+              { value: 'displayName', label: 'Sort: Directory Name' },
+              { value: 'email', label: 'Sort: Email' },
+              { value: 'academicBatch', label: 'Sort: Admission Batch' },
+              { value: 'academicClass', label: 'Sort: Class' },
+              { value: 'accountEnabled', label: 'Sort: Account State' },
+            ]}
+          />
+          <Select
+            label=""
+            value={sortOrder}
+            onChange={setSortOrder}
+            options={[
+              { value: 'asc', label: 'Ascending' },
+              { value: 'desc', label: 'Descending' },
             ]}
           />
         </div>
@@ -174,36 +151,17 @@ export default function StaffPage() {
           columns={columns}
           data={staff}
           keyField="id"
-          actions={actions}
           loading={loading}
-          emptyMessage="No staff found matching your criteria"
+          emptyMessage={emptyMessage}
           page={page}
-          pageSize={20}
+          pageSize={PAGE_SIZE}
           total={total}
           onPageChange={setPage}
         />
         <div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Total Staff: {total}
+          Verified directory faculty/staff: {total} · page size {PAGE_SIZE}
         </div>
       </div>
-
-      <StaffFormModal 
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-        staff={selectedStaff}
-        onSuccess={fetchStaff}
-      />
-
-      <ConfirmDialog
-        isOpen={!!staffToDelete}
-        title="Delete Staff?"
-        message={`Are you sure you want to delete this staff member (${staffToDelete?.name} - ${staffToDelete?.staffCode})? This action cannot be undone.`}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        onConfirm={handleDelete}
-        onClose={() => setStaffToDelete(null)}
-        variant="danger"
-      />
     </div>
   );
 }

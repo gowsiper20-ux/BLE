@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { InteractionRequiredAuthError } from '@azure/msal-browser';
 import { api } from '../services/api';
 import type { Staff, UserRole } from '../types';
-import { msalInstance, loginRequest } from '../config/msalConfig';
+import { isMsalConfigured, msalInstance, loginRequest } from '../config/msalConfig';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -12,9 +13,7 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  login: (user: Staff, token?: string) => void;
   loginWithMicrosoft: () => Promise<{ success: boolean; error?: string }>;
-  loginWithCollegeAccount: (email: string, name?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   hasRole: (role: UserRole) => boolean;
   hasAnyRole: (roles: UserRole[]) => boolean;
@@ -22,10 +21,14 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function extractRoles(user: any): UserRole[] {
+function isUserRole(role: string): role is UserRole {
+  return ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF', 'STUDENT'].includes(role);
+}
+
+function extractRoles(user: Staff | undefined): UserRole[] {
   if (!user) return [];
   if (Array.isArray(user.roles) && user.roles.length > 0) {
-    return user.roles;
+    return user.roles.filter(isUserRole);
   }
   if (user.role) {
     return [user.role];
@@ -41,11 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: true,
   });
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       const res = await api.get<{ success: boolean; user?: Staff }>('/api/auth/me');
       if (res.success && res.user) {
@@ -64,41 +63,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       api.setToken(null);
       setState({ isAuthenticated: false, user: null, roles: [], loading: false });
     }
-  };
+  }, []);
 
-  const login = (user: Staff, token?: string) => {
-    if (token) {
-      api.setToken(token);
-    }
-    const roles = extractRoles(user);
-    setState({
-      isAuthenticated: true,
-      user: { ...user, roles },
-      roles,
-      loading: false,
-    });
-  };
+  useEffect(() => {
+    void Promise.resolve().then(checkAuth);
+  }, [checkAuth]);
 
   const loginWithMicrosoft = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      // Prompt Microsoft Entra ID login via popup
-      const msalResponse = await msalInstance.loginPopup(loginRequest);
-      const token = msalResponse.accessToken || msalResponse.idToken;
-
-      if (!token) {
-        throw new Error('No identity token received from Microsoft identity platform.');
+      if (!isMsalConfigured() || loginRequest.scopes.length !== 1) {
+        throw new Error('Microsoft sign-in is not configured. Set the tenant, SPA client, and backend API scope.');
       }
 
-      // Exchange Microsoft token with SONA API backend
+      const loginResponse = await msalInstance.loginPopup(loginRequest);
+      if (!loginResponse.account) {
+        throw new Error('Microsoft sign-in did not return an account.');
+      }
+
+      msalInstance.setActiveAccount(loginResponse.account);
+      let accessToken: string;
+      try {
+        const tokenResponse = await msalInstance.acquireTokenSilent({
+          ...loginRequest,
+          account: loginResponse.account,
+        });
+        accessToken = tokenResponse.accessToken;
+      } catch (error) {
+        if (!(error instanceof InteractionRequiredAuthError)) throw error;
+        const tokenResponse = await msalInstance.acquireTokenPopup({
+          ...loginRequest,
+          account: loginResponse.account,
+        });
+        accessToken = tokenResponse.accessToken;
+      }
+      if (!accessToken) throw new Error('Microsoft did not issue an access token for the backend API.');
+
       const res = await api.post<{
         success: boolean;
-        token: string;
         user: Staff;
         error?: { code?: string; message?: string };
-      }>('/api/auth/microsoft', { token });
+      }>('/api/auth/microsoft', { token: accessToken });
 
-      if (res.success && res.token && res.user) {
-        api.setToken(res.token);
+      if (res.success && res.user) {
         const roles = extractRoles(res.user);
         setState({
           isAuthenticated: true,
@@ -113,46 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         success: false,
         error: res.error?.message || 'Microsoft login failed.',
       };
-    } catch (err: any) {
-      const message = err?.message || 'Microsoft authentication was cancelled or failed.';
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Microsoft authentication was cancelled or failed.';
       return { success: false, error: message };
-    }
-  };
-
-  const loginWithCollegeAccount = async (email: string, name?: string): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const devToken = `test-ms-token:${JSON.stringify({
-        oid: `sona-oid-${email.replace(/[^a-zA-Z0-9]/g, '-')}`,
-        tid: import.meta.env.VITE_MSAL_TENANT_ID || 'sonatech-tenant',
-        email: email.trim().toLowerCase(),
-        name: name || email.split('@')[0],
-      })}`;
-
-      const res = await api.post<{
-        success: boolean;
-        token: string;
-        user: Staff;
-        error?: { code?: string; message?: string };
-      }>('/api/auth/microsoft', { token: devToken });
-
-      if (res.success && res.token && res.user) {
-        api.setToken(res.token);
-        const roles = extractRoles(res.user);
-        setState({
-          isAuthenticated: true,
-          user: { ...res.user, roles },
-          roles,
-          loading: false,
-        });
-        return { success: true };
-      }
-
-      return {
-        success: false,
-        error: res.error?.message || 'College account sign-in failed.',
-      };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Authentication failed.' };
     }
   };
 
@@ -187,9 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         ...state,
-        login,
         loginWithMicrosoft,
-        loginWithCollegeAccount,
         logout,
         hasRole,
         hasAnyRole,
@@ -200,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
