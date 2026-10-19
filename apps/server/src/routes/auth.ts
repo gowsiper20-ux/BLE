@@ -5,7 +5,7 @@ import { AuthRepository } from "../repositories/auth.repository";
 import bcrypt from "bcrypt";
 import { setCookie, deleteCookie } from "hono/cookie";
 import { msAuthService } from "../services/ms-auth.service";
-import { authenticate } from "../middlewares/auth.middleware";
+import { authenticate, requireHodOrAdmin } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const authRoutes = new Hono();
@@ -270,5 +270,45 @@ authRoutes.get("/directory-status", authenticate, async (c) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 500);
+  }
+});
+
+/**
+ * GET /api/auth/directory-unresolved
+ * Returns list of Microsoft directory users who are not yet mapped to staff or students.
+ */
+authRoutes.get("/directory-unresolved", requireHodOrAdmin, async (c) => {
+  try {
+    const page = parseInt(c.req.query("page") || "1", 10);
+    const limit = parseInt(c.req.query("limit") || "50", 10);
+    const data = await msGraphService.getUnresolvedIdentities(limit, page);
+    return c.json({ success: true, ...data });
+  } catch (error: any) {
+    return c.json({ success: false, error: { message: error.message } }, 500);
+  }
+});
+
+/**
+ * POST /api/auth/resolve-identity
+ * Manually maps an unresolved Microsoft identity to an existing staff or student record.
+ */
+authRoutes.post("/resolve-identity", requireHodOrAdmin, async (c) => {
+  try {
+    const user = c.get("user") as AuthPrincipal;
+    const body = await c.req.json();
+    const { id, staffId, studentId } = body;
+
+    const actor = {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles[0] || "HOD",
+      ipAddress: c.req.header("x-forwarded-for") || undefined,
+      userAgent: c.req.header("user-agent") || undefined,
+    };
+
+    const result = await msGraphService.resolveIdentity(id, { staffId, studentId }, actor);
+    return c.json(result);
+  } catch (error: any) {
+    return c.json({ success: false, error: { message: error.message } }, 400);
   }
 });

@@ -38,5 +38,19 @@ export const attendanceService = {
 
   getLiveAttendance: (id: string) => {
     return api.get<ApiResponse<import('../types').LiveAttendanceData>>(`/api/attendance/sessions/${id}/live`);
+  },
+
+  getRecords: (params?: any) => {
+    const qs = params ? new URLSearchParams(Object.entries(params).filter(([_, v]) => v !== undefined && v !== '') as any).toString() : '';
+    return api.get<ApiResponse<any[]>>(`/api/attendance/records${qs ? `?${qs}` : ''}`);
+  },
+
+  correctAttendance: (data: { recordId: string; newStatus: string; reason: string }) => {
+    return api.post<ApiResponse<any>>('/api/attendance/corrections', data);
+  },
+
+  manualMark: (data: { sessionId: string; studentId: string; status: string; reason?: string }) => {
+    return api.post<ApiResponse<any>>('/api/attendance/records/manual', data);
   }
 };
+

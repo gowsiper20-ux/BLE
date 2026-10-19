@@ -1,4 +1,4 @@
-import { pgTable, uuid, timestamp, varchar, pgEnum, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, varchar, pgEnum, integer, uniqueIndex, text } from 'drizzle-orm/pg-core';
 import { attendanceSessions } from './attendance';
 import { students } from './students';
 import { staff } from './staff';
@@ -24,3 +24,14 @@ export const attendanceRecords = pgTable('attendance_records', {
     recordUniqueIdx: uniqueIndex('record_session_student_idx').on(table.attendanceSessionId, table.studentId),
   };
 });
+
+export const attendanceCorrections = pgTable('attendance_corrections', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  attendanceRecordId: uuid('attendance_record_id').notNull().references(() => attendanceRecords.id, { onDelete: 'cascade' }),
+  previousStatus: varchar('previous_status', { length: 50 }).notNull(),
+  newStatus: varchar('new_status', { length: 50 }).notNull(),
+  reason: text('reason').notNull(),
+  correctedBy: uuid('corrected_by').references(() => staff.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+

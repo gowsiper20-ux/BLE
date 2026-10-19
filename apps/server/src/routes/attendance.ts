@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
 import { AttendanceSessionService } from '../services/attendance-session.service';
+import { AttendanceRecordService } from '../services/attendance-record.service';
 import { requireStaffOrAdmin } from '../middlewares/auth.middleware';
 import type { AuthPrincipal } from '@smart-attendance/shared';
 
 export const attendanceRoutes = new Hono();
 const service = new AttendanceSessionService();
+const recordService = new AttendanceRecordService();
 
 attendanceRoutes.post('/sessions/start', requireStaffOrAdmin, async (c) => {
   try {
@@ -20,7 +22,15 @@ attendanceRoutes.post('/sessions/start', requireStaffOrAdmin, async (c) => {
       return c.json({ success: false, error: { message: "Missing required fields: timetableId and date." } }, 400);
     }
 
-    const session = await service.startSession(timetableId, effectiveStaffId, date);
+    const actor = {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles[0] || 'STAFF',
+      ipAddress: c.req.header('x-forwarded-for') || undefined,
+      userAgent: c.req.header('user-agent') || undefined,
+    };
+
+    const session = await service.startSession(timetableId, effectiveStaffId, date, actor);
     return c.json({ success: true, data: session }, 201);
   } catch (error: any) {
     if (error.message === "SESSION_ALREADY_EXISTS") {
@@ -30,21 +40,37 @@ attendanceRoutes.post('/sessions/start', requireStaffOrAdmin, async (c) => {
   }
 });
 
-attendanceRoutes.post('/sessions/:id/end', async (c) => {
+attendanceRoutes.post('/sessions/:id/end', requireStaffOrAdmin, async (c) => {
   try {
+    const user = c.get('user') as AuthPrincipal;
     const { id } = c.req.param();
-    const session = await service.endSession(id);
+    const actor = {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles[0] || 'STAFF',
+      ipAddress: c.req.header('x-forwarded-for') || undefined,
+      userAgent: c.req.header('user-agent') || undefined,
+    };
+    const session = await service.endSession(id, actor);
     return c.json({ success: true, data: session });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 400);
   }
 });
 
-attendanceRoutes.post('/sessions/:id/cancel', async (c) => {
+attendanceRoutes.post('/sessions/:id/cancel', requireStaffOrAdmin, async (c) => {
   try {
+    const user = c.get('user') as AuthPrincipal;
     const { id } = c.req.param();
     const body = await c.req.json();
-    const session = await service.cancelSession(id, body.reason);
+    const actor = {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles[0] || 'STAFF',
+      ipAddress: c.req.header('x-forwarded-for') || undefined,
+      userAgent: c.req.header('user-agent') || undefined,
+    };
+    const session = await service.cancelSession(id, body.reason, actor);
     return c.json({ success: true, data: session });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 400);
@@ -130,11 +156,85 @@ attendanceRoutes.get('/sessions/:id/live', async (c) => {
 });
 
 // GET /api/attendance/records
-attendanceRoutes.get("/records", (c) => {
-  return c.json({ message: "Attendance records — not yet implemented" }, 501);
+attendanceRoutes.get("/records", requireStaffOrAdmin, async (c) => {
+  try {
+    const sessionId = c.req.query("sessionId");
+    const studentId = c.req.query("studentId");
+    const classId = c.req.query("classId");
+    const date = c.req.query("date");
+    const status = c.req.query("status");
+
+    const data = await recordService.getRecords({ sessionId, studentId, classId, date, status });
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: { message: error.message } }, 500);
+  }
+});
+
+// GET /api/attendance/records/:id
+attendanceRoutes.get("/records/:id", requireStaffOrAdmin, async (c) => {
+  try {
+    const id = c.req.param("id")!;
+    const data = await recordService.getRecordById(id);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: { message: error.message } }, 404);
+  }
 });
 
 // POST /api/attendance/corrections
-attendanceRoutes.post("/corrections", (c) => {
-  return c.json({ message: "Attendance correction — not yet implemented" }, 501);
+attendanceRoutes.post("/corrections", requireStaffOrAdmin, async (c) => {
+  try {
+    const user = c.get("user") as AuthPrincipal;
+    const body = await c.req.json();
+    const { recordId, newStatus, reason } = body;
+
+    const actor = {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles[0] || "STAFF",
+      ipAddress: c.req.header("x-forwarded-for") || undefined,
+      userAgent: c.req.header("user-agent") || undefined,
+    };
+
+    const data = await recordService.correctAttendance({
+      recordId,
+      newStatus,
+      reason,
+      actor,
+    });
+
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: { message: error.message } }, 400);
+  }
+});
+
+// POST /api/attendance/records/manual
+attendanceRoutes.post("/records/manual", requireStaffOrAdmin, async (c) => {
+  try {
+    const user = c.get("user") as AuthPrincipal;
+    const body = await c.req.json();
+    const { sessionId, studentId, status, reason } = body;
+
+    const actor = {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles[0] || "STAFF",
+      ipAddress: c.req.header("x-forwarded-for") || undefined,
+      userAgent: c.req.header("user-agent") || undefined,
+    };
+
+    const data = await recordService.manualMark({
+      sessionId,
+      studentId,
+      status,
+      reason,
+      actor,
+    });
+
+    return c.json({ success: true, data }, 201);
+  } catch (error: any) {
+    return c.json({ success: false, error: { message: error.message } }, 400);
+  }
 });

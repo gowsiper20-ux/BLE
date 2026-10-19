@@ -21,11 +21,23 @@ timetableRoutes.get("/overrides", requireStaffOrAdmin, async (c) => {
 
 timetableRoutes.post("/overrides", requireHodOrAdmin, async (c) => {
   try {
+    const user = c.get("user") as any;
     const body = await c.req.json();
     if (body.overrideDate) {
-      body.overrideDate = new Date(body.overrideDate);
+      if (typeof body.overrideDate === 'string') {
+        body.overrideDate = body.overrideDate.split('T')[0];
+      } else if (body.overrideDate instanceof Date) {
+        body.overrideDate = body.overrideDate.toISOString().split('T')[0];
+      }
     }
-    const data = await overrideService.createOverride(body);
+    const actor = user ? {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles?.[0] || 'HOD',
+      ipAddress: c.req.header('x-forwarded-for') || undefined,
+      userAgent: c.req.header('user-agent') || undefined,
+    } : undefined;
+    const data = await overrideService.createOverride(body, actor);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
     return c.json({ success: false, error: { code: error.message, message: error.message } }, 400);
@@ -34,11 +46,23 @@ timetableRoutes.post("/overrides", requireHodOrAdmin, async (c) => {
 
 timetableRoutes.patch("/overrides/:id", requireHodOrAdmin, async (c) => {
   try {
+    const user = c.get("user") as any;
     const body = await c.req.json();
     if (body.overrideDate) {
-      body.overrideDate = new Date(body.overrideDate);
+      if (typeof body.overrideDate === 'string') {
+        body.overrideDate = body.overrideDate.split('T')[0];
+      } else if (body.overrideDate instanceof Date) {
+        body.overrideDate = body.overrideDate.toISOString().split('T')[0];
+      }
     }
-    const data = await overrideService.updateOverride(c.req.param("id")!, body);
+    const actor = user ? {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles?.[0] || 'HOD',
+      ipAddress: c.req.header('x-forwarded-for') || undefined,
+      userAgent: c.req.header('user-agent') || undefined,
+    } : undefined;
+    const data = await overrideService.updateOverride(c.req.param("id")!, body, actor);
     return c.json({ success: true, data });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 400);
@@ -47,7 +71,15 @@ timetableRoutes.patch("/overrides/:id", requireHodOrAdmin, async (c) => {
 
 timetableRoutes.delete("/overrides/:id", requireHodOrAdmin, async (c) => {
   try {
-    await overrideService.deleteOverride(c.req.param("id")!);
+    const user = c.get("user") as any;
+    const actor = user ? {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles?.[0] || 'HOD',
+      ipAddress: c.req.header('x-forwarded-for') || undefined,
+      userAgent: c.req.header('user-agent') || undefined,
+    } : undefined;
+    await overrideService.deleteOverride(c.req.param("id")!, actor);
     return c.json({ success: true });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 400);

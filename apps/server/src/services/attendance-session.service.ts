@@ -3,6 +3,8 @@ import { TimetableRepository } from '../repositories/timetable.repository';
 import { TimetableOverrideRepository } from '../repositories/timetable-override.repository';
 import { StaffRepository } from '../repositories/staff.repository';
 import { PeriodRepository } from '../repositories/period.repository';
+import { AuditService } from './audit.service';
+import type { AuditActor } from './staff.service';
 
 // Start window: 10 mins before period starts
 const ATTENDANCE_START_EARLY_MINUTES = parseInt(process.env.ATTENDANCE_START_EARLY_MINUTES || '10', 10);
@@ -13,10 +15,11 @@ export class AttendanceSessionService {
   private overrideRepo = new TimetableOverrideRepository();
   private staffRepo = new StaffRepository();
   private periodRepo = new PeriodRepository();
+  private audit = new AuditService();
 
   private getDayName(dateStr: string) {
     const d = new Date(dateStr);
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     return days[d.getDay()];
   }
 
@@ -25,7 +28,7 @@ export class AttendanceSessionService {
     return hours * 60 + minutes;
   }
 
-  async startSession(timetableId: string, staffId: string, dateStr: string) {
+  async startSession(timetableId: string, staffId: string, dateStr: string, actor?: AuditActor) {
     // 1. Timetable exists
     const timetable = await this.timetableRepo.findById(timetableId);
     if (!timetable) throw new Error("TIMETABLE_NOT_FOUND");
@@ -33,7 +36,7 @@ export class AttendanceSessionService {
 
     // 2. Validate day of week matches date
     const dayName = this.getDayName(dateStr);
-    if (timetable.dayOfWeek !== dayName) throw new Error("INVALID_TIMETABLE_DAY");
+    if (timetable.dayOfWeek.toUpperCase() !== dayName) throw new Error("INVALID_TIMETABLE_DAY");
 
     const override = await this.overrideRepo.findByTimetableAndDate(timetableId, dateStr);
     const effectiveStaffId = override?.replacementStaffId || timetable.staffId;
@@ -71,37 +74,78 @@ export class AttendanceSessionService {
     }
 
     // 7. Create Session
-    return await this.repo.create({
+    const session = await this.repo.create({
       timetableId,
       sessionDate: dateStr,
       startedAt: now.toISOString(),
       status: 'ACTIVE',
       startedByStaffId: staffId,
     });
+
+    await this.audit.log({
+      actorId: actor?.actorId || staffId,
+      actorName: actor?.actorName || staff.name,
+      actorRole: actor?.actorRole || 'STAFF',
+      action: 'START_ATTENDANCE_SESSION',
+      entityType: 'ATTENDANCE_SESSION',
+      entityId: session.id,
+      description: `Started attendance session for timetable ${timetableId} on ${dateStr}`,
+      newValues: { timetableId, sessionDate: dateStr, startedByStaffId: staffId },
+    });
+
+    return session;
   }
 
-  async endSession(id: string) {
+  async endSession(id: string, actor?: AuditActor) {
     const session = await this.repo.findById(id);
     if (!session) throw new Error("SESSION_NOT_FOUND");
     if (session.status !== 'ACTIVE') throw new Error("SESSION_NOT_ACTIVE");
 
-    return await this.repo.update(id, {
+    const updated = await this.repo.update(id, {
       status: 'COMPLETED',
       endedAt: new Date().toISOString()
     });
+
+    await this.audit.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName,
+      actorRole: actor?.actorRole,
+      action: 'END_ATTENDANCE_SESSION',
+      entityType: 'ATTENDANCE_SESSION',
+      entityId: id,
+      description: `Ended attendance session ${id}`,
+      oldValues: { status: 'ACTIVE' },
+      newValues: { status: 'COMPLETED' },
+    });
+
+    return updated;
   }
 
-  async cancelSession(id: string, reason: string) {
+  async cancelSession(id: string, reason: string, actor?: AuditActor) {
     if (!reason) throw new Error("REASON_REQUIRED");
     const session = await this.repo.findById(id);
     if (!session) throw new Error("SESSION_NOT_FOUND");
     if (session.status === 'COMPLETED') throw new Error("CANNOT_CANCEL_COMPLETED_SESSION");
 
-    return await this.repo.update(id, {
+    const updated = await this.repo.update(id, {
       status: 'CANCELLED',
       cancellationReason: reason,
       endedAt: session.status === 'ACTIVE' ? new Date().toISOString() : null
     });
+
+    await this.audit.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName,
+      actorRole: actor?.actorRole,
+      action: 'CANCEL_ATTENDANCE_SESSION',
+      entityType: 'ATTENDANCE_SESSION',
+      entityId: id,
+      description: `Cancelled attendance session ${id}. Reason: ${reason}`,
+      oldValues: { status: session.status },
+      newValues: { status: 'CANCELLED', cancellationReason: reason },
+    });
+
+    return updated;
   }
 
   async getSession(id: string) {

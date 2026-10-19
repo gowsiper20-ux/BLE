@@ -4,9 +4,12 @@ import PageHeader from '../components/PageHeader';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Button from '../components/Button';
+import Modal from '../components/Modal';
+import Select from '../components/Select';
+import Input from '../components/Input';
 import { useToast } from '../hooks/useToast';
 import { attendanceService } from '../services/attendanceService';
-import type { AttendanceSession, LiveAttendanceData } from '../types';
+import type { AttendanceSession, LiveAttendanceData, LiveAttendanceStudent } from '../types';
 import DataTable from '../components/DataTable';
 
 export default function AttendanceSessionDetailsPage() {
@@ -15,7 +18,13 @@ export default function AttendanceSessionDetailsPage() {
   const [liveData, setLiveData] = useState<LiveAttendanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [bleLoading, setBleLoading] = useState(false);
-  
+
+  // Correction Modal state
+  const [selectedStudent, setSelectedStudent] = useState<LiveAttendanceStudent | null>(null);
+  const [newStatus, setNewStatus] = useState<string>('PRESENT');
+  const [correctionReason, setCorrectionReason] = useState<string>('');
+  const [submittingCorrection, setSubmittingCorrection] = useState(false);
+
   const navigate = useNavigate();
   const { showToast } = useToast();
 
@@ -108,6 +117,37 @@ export default function AttendanceSessionDetailsPage() {
     }
   };
 
+  const handleOpenCorrection = (student: LiveAttendanceStudent) => {
+    setSelectedStudent(student);
+    setNewStatus(student.status === 'PRESENT' ? 'ABSENT' : 'PRESENT');
+    setCorrectionReason('');
+  };
+
+  const handleSubmitCorrection = async () => {
+    if (!id || !selectedStudent) return;
+    if (!correctionReason.trim()) {
+      showToast('error', 'Please provide a reason for the manual attendance correction.');
+      return;
+    }
+
+    setSubmittingCorrection(true);
+    try {
+      await attendanceService.manualMark({
+        sessionId: id,
+        studentId: selectedStudent.studentId,
+        status: newStatus,
+        reason: correctionReason.trim(),
+      });
+      showToast('success', `Attendance updated for ${selectedStudent.name} (${newStatus})`);
+      setSelectedStudent(null);
+      fetchLiveAttendance();
+    } catch (err: any) {
+      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to update attendance');
+    } finally {
+      setSubmittingCorrection(false);
+    }
+  };
+
   if (loading) return <div>Loading...</div>;
   if (!session) return <div>Session not found</div>;
 
@@ -117,7 +157,7 @@ export default function AttendanceSessionDetailsPage() {
       ACTIVE: 'info',
       COMPLETED: 'success',
       CANCELLED: 'danger',
-      EXPIRED: 'warning'
+      EXPIRED: 'warning',
     };
     return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
   };
@@ -125,11 +165,11 @@ export default function AttendanceSessionDetailsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <PageHeader
-        title={`Session Details`}
+        title="Session Details"
         breadcrumbs={[
           { label: 'Home', path: '/dashboard' },
           { label: 'Attendance', path: '/attendance' },
-          { label: 'Session' }
+          { label: 'Session' },
         ]}
         actions={
           <div style={{ display: 'flex', gap: '12px' }}>
@@ -158,14 +198,30 @@ export default function AttendanceSessionDetailsPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         <Card title="Session Information">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div><strong>Session ID:</strong> {session.id}</div>
-            <div><strong>Status:</strong> {getStatusBadge(session.status)}</div>
-            <div><strong>Date:</strong> {new Date(session.sessionDate).toLocaleDateString()}</div>
-            <div><strong>Scheduled Time:</strong> {session.periodStartTime} - {session.periodEndTime} ({session.periodName})</div>
-            <div><strong>Actual Start:</strong> {session.startedAt ? new Date(session.startedAt).toLocaleTimeString() : 'Not started'}</div>
-            <div><strong>Actual End:</strong> {session.endedAt ? new Date(session.endedAt).toLocaleTimeString() : 'Not ended'}</div>
+            <div>
+              <strong>Session ID:</strong> {session.id}
+            </div>
+            <div>
+              <strong>Status:</strong> {getStatusBadge(session.status)}
+            </div>
+            <div>
+              <strong>Date:</strong> {new Date(session.sessionDate).toLocaleDateString()}
+            </div>
+            <div>
+              <strong>Scheduled Time:</strong> {session.periodStartTime} - {session.periodEndTime} ({session.periodName})
+            </div>
+            <div>
+              <strong>Actual Start:</strong>{' '}
+              {session.startedAt ? new Date(session.startedAt).toLocaleTimeString() : 'Not started'}
+            </div>
+            <div>
+              <strong>Actual End:</strong>{' '}
+              {session.endedAt ? new Date(session.endedAt).toLocaleTimeString() : 'Not ended'}
+            </div>
             {session.cancellationReason && (
-              <div><strong>Cancellation Reason:</strong> {session.cancellationReason}</div>
+              <div>
+                <strong>Cancellation Reason:</strong> {session.cancellationReason}
+              </div>
             )}
           </div>
         </Card>
@@ -173,47 +229,123 @@ export default function AttendanceSessionDetailsPage() {
         {liveData ? (
           <Card title="Live Attendance Stats">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div><strong>Total Students:</strong> {liveData.totalStudents}</div>
-              <div><strong>Detected:</strong> <span style={{ color: 'var(--success)' }}>{liveData.detectedStudents}</span></div>
-              <div><strong>Not Detected:</strong> <span style={{ color: 'var(--danger)' }}>{liveData.notDetectedStudents}</span></div>
-              <div><strong>Attendance Percentage:</strong> {liveData.percentage}%</div>
+              <div>
+                <strong>Total Students:</strong> {liveData.totalStudents}
+              </div>
+              <div>
+                <strong>Detected / Present:</strong>{' '}
+                <span style={{ color: 'var(--success-color, #059669)' }}>{liveData.detectedStudents}</span>
+              </div>
+              <div>
+                <strong>Not Detected / Absent:</strong>{' '}
+                <span style={{ color: 'var(--danger-color, #DC2626)' }}>{liveData.notDetectedStudents}</span>
+              </div>
+              <div>
+                <strong>Attendance Percentage:</strong> {liveData.percentage}%
+              </div>
             </div>
           </Card>
         ) : (
           <Card title="Academic Details">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div><strong>Class:</strong> {session.className}</div>
-              <div><strong>Subject:</strong> {session.subjectName}</div>
-              <div><strong>Staff:</strong> {session.staffName}</div>
+              <div>
+                <strong>Class:</strong> {session.className}
+              </div>
+              <div>
+                <strong>Subject:</strong> {session.subjectName}
+              </div>
+              <div>
+                <strong>Staff:</strong> {session.staffName}
+              </div>
             </div>
           </Card>
         )}
       </div>
 
       {liveData && (
-        <Card title="Live Student Roster" padding="none">
+        <Card title="Student Attendance Roster & Manual Marking" padding="none">
           <DataTable
             data={liveData.students}
             keyField="studentId"
             columns={[
               { key: 'registerNumber', label: 'Register Number' },
               { key: 'name', label: 'Student Name' },
-              { 
-                key: 'status', 
+              {
+                key: 'status',
                 label: 'Status',
                 render: (val) => (
                   <Badge variant={val === 'PRESENT' ? 'success' : 'danger'}>
                     {val as string}
                   </Badge>
-                )
+                ),
               },
               { key: 'source', label: 'Source', render: (val) => (val as string) || '-' },
-              { key: 'firstDetectedAt', label: 'First Detected', render: (val) => val ? new Date(val as string).toLocaleTimeString() : '-' },
-              { key: 'lastDetectedAt', label: 'Last Detected', render: (val) => val ? new Date(val as string).toLocaleTimeString() : '-' },
+              {
+                key: 'firstDetectedAt',
+                label: 'First Detected',
+                render: (val) => (val ? new Date(val as string).toLocaleTimeString() : '-'),
+              },
+              {
+                key: 'lastDetectedAt',
+                label: 'Last Detected',
+                render: (val) => (val ? new Date(val as string).toLocaleTimeString() : '-'),
+              },
               { key: 'detectionCount', label: 'Pings' },
             ]}
+            actions={(row: LiveAttendanceStudent) => (
+              <Button variant="ghost" size="sm" onClick={() => handleOpenCorrection(row)}>
+                Correct / Mark
+              </Button>
+            )}
           />
         </Card>
+      )}
+
+      {/* Manual Attendance Marking / Correction Modal */}
+      {selectedStudent && (
+        <Modal
+          isOpen={!!selectedStudent}
+          onClose={() => setSelectedStudent(null)}
+          title={`Manual Attendance Correction: ${selectedStudent.name}`}
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <Button variant="secondary" onClick={() => setSelectedStudent(null)} disabled={submittingCorrection}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleSubmitCorrection} disabled={submittingCorrection}>
+                {submittingCorrection ? 'Saving...' : 'Confirm Correction'}
+              </Button>
+            </div>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ padding: '12px', background: '#F1F6FC', borderRadius: '6px', fontSize: '14px' }}>
+              <div><strong>Student:</strong> {selectedStudent.name} ({selectedStudent.registerNumber})</div>
+              <div><strong>Current Recorded Status:</strong> {selectedStudent.status}</div>
+              <div><strong>Session:</strong> {session.className} &bull; {session.subjectName}</div>
+            </div>
+
+            <Select
+              label="New Attendance Status *"
+              value={newStatus}
+              onChange={setNewStatus}
+              options={[
+                { value: 'PRESENT', label: 'Present' },
+                { value: 'ABSENT', label: 'Absent' },
+                { value: 'LATE', label: 'Late' },
+                { value: 'MANUAL', label: 'Manual' },
+              ]}
+            />
+
+            <Input
+              label="Correction Reason / Rationale *"
+              value={correctionReason}
+              onChange={(e) => setCorrectionReason(e.target.value)}
+              placeholder="e.g. Device Bluetooth issue verified by class counselor, On-Duty approved"
+              required
+            />
+          </div>
+        </Modal>
       )}
     </div>
   );

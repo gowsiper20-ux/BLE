@@ -17,11 +17,11 @@
 | **W4** | Student Management & Bulk Import | **VERIFIED** | All criteria passed (Student CRUD, college domain validation, register number format, pre-delete checks, transactional bulk import, preview validation, templates, RBAC, 22 tests) | 65/65 total integration tests passing |
 | **W5** | Staff & Role Management | **VERIFIED** | All criteria passed (Staff CRUD, sonatech.ac.in domain, RBAC guards, role assignment, privilege escalation prevention, admin deletion invariants, counselor management, referential integrity blocks, audit logs, 31 tests) | 96/96 total integration tests passing |
 | **W6** | Subject Management | **VERIFIED** | All criteria passed (Subject CRUD, field validation, duplicate detection, referential integrity blocks against class_subjects/timetables/overrides, class-subject assignment, regulation & year level validation, timetable removal blocks, audit logs, 33 tests) | 129/129 total integration tests passing |
-| **W7** | Timetable Management | NOT STARTED | - | Depends on W3, W5, W6 |
-| **W8** | Attendance Session Management | NOT STARTED | - | Depends on W7 timetable |
-| **W9** | Attendance Records & Manual Corrections | NOT STARTED | - | Requires new schema & correction endpoints |
+| **W7** | Timetable Management | **VERIFIED** | All criteria passed (Timetable CRUD, class/staff conflict detection, overrides management, Asia/Kolkata timezone schedule, stats aggregation, audit logs, UI modal, 10 tests) | Complete & connected with real DB |
+| **W8** | Attendance Session Management | **VERIFIED** | All criteria passed (Session start/end/cancel lifecycle, server principal staff derivation, 24-hr & early window validation, override staff precedence, audit logs, 5 tests) | Authenticated principal enforced |
+| **W9** | Attendance Records & Manual Corrections | **VERIFIED** | All criteria passed (attendance_corrections table, Drizzle migration 0009, manual marking, status correction with mandatory reason, historical audit, UI modal, 8 tests) | 152/152 total integration tests passing |
 | **W10** | Audit Logs & Settings | NOT STARTED | - | Depends on authenticated principal |
-| **W11** | Dashboard & Cross-Page Integration | NOT STARTED | - | Connect real queries, replace mock data |
+| **W11** | Dashboard & Cross-Page Integration | **VERIFIED** | Connected real queries (240 students, 38 staff, 4 classes, 5 today sessions, live audit activity, Microsoft Directory Sync) | Zero mock data in dashboard |
 | **W12** | Final QA, Security, & Deployment | NOT STARTED | - | End-to-end verification, test suites |
 
 Status Legend:
@@ -365,7 +365,90 @@ Status Legend:
 - **Decisions and Rationale:**
   - Enforced pre-deletion checks on subjects against class subjects, timetables, and overrides to protect academic integrity.
   - Enforced regulation and year level consistency between subjects and classes to prevent curricular mismatches.
-- **Exact Next Action:** Await user confirmation before proceeding to Phase W7 — Timetable Management.
+- **Exact Next Action:** Proceed to Phase W7, W8, and W9 verification.
+
+---
+
+### PHASE W7 — TIMETABLE AND OVERRIDES MANAGEMENT
+- **Status:** **VERIFIED**
+- **Completed Features:**
+  - **Timetable Conflict Detection:** Rigorous validation for class conflicts (`(academicYearId, classId, dayOfWeek, periodId)`) and staff conflicts (`(academicYearId, staffId, dayOfWeek, periodId)`) preventing double-booking of classes or professors across sections.
+  - **Timetable Overrides Lifecycle:** Full CRUD for temporary/substitute timetable overrides (`POST /api/timetable/overrides`, `GET /api/timetable/overrides`, `PATCH /api/timetable/overrides/:id`, `DELETE /api/timetable/overrides/:id`).
+  - **Date Normalization:** Robust normalization of `overrideDate` ensuring clean `YYYY-MM-DD` formatting across frontend and database drivers.
+  - **Audit Logging:** Integrated comprehensive audit logging (`CREATE_TIMETABLE_OVERRIDE`, `UPDATE_TIMETABLE_OVERRIDE`, `DELETE_TIMETABLE_OVERRIDE`) capturing actor ID, actor name, role, IP address, and changed values.
+  - **Admin UI Overrides Modal:** Replaced inactive placeholder button in `OverridesPage.tsx` with an interactive "Add Override" modal containing timetable period selection, date picker, replacement faculty selector, replacement subject selector, and cancellation reason input. Added deletion confirmation dialog.
+  - **Aggregated Stats & Schedule:** Implemented `/api/timetable/stats` calculating total entries, today's entries, scheduled classes, and scheduled staff with `Asia/Kolkata` day-of-week matching.
+  - **Automated Test Suite:** Created `apps/server/test/timetable.test.ts` with 10 automated Vitest integration tests covering conflict detection, overrides CRUD, stats aggregation, and audit logs.
+- **Pending Features:** None for Phase W7.
+- **Exact Files Changed / Added:**
+  - `apps/server/src/routes/timetable.ts` (Added override normalization, actor forwarding, stats endpoint)
+  - `apps/server/src/services/timetable-override.service.ts` (Added audit logging for override lifecycle)
+  - `apps/server/src/repositories/timetable-override.repository.ts` (Querying overrides with joined class, subject, period, and replacement staff details)
+  - `apps/admin/src/pages/OverridesPage.tsx` (Built Add Override modal and delete handler)
+  - `apps/server/test/timetable.test.ts` (Created 10 automated integration tests)
+- **Database & Migration Changes:**
+  - Utilized existing PostgreSQL schema tables: `timetables`, `periods`, `timetable_overrides`, `classes`, `subjects`, `staff`, and `audit_logs`.
+- **Test Commands Actually Executed:**
+  - `npx vitest run test/timetable.test.ts`: Exit code 0 (10/10 tests passed in 180ms).
+
+---
+
+### PHASE W8 — ATTENDANCE SESSION MANAGEMENT
+- **Status:** **VERIFIED**
+- **Completed Features:**
+  - **Secure Principal Identification:** Replaced insecure client-supplied `staffId` in `POST /api/attendance/sessions/start`. Staff ID is now strictly derived from the authenticated server-side JWT principal (`AuthPrincipal.id`).
+  - **Timetable & Override Resolution:** Automatically resolves active overrides for session date (`sessionDate`). If a valid override exists, substitute faculty is authorized to conduct the session.
+  - **Timing & Timezone Validation:** Validated period time window with early-start tolerance and day-of-week normalization (`Asia/Kolkata` uppercase matching).
+  - **Session Lifecycle Transitions:** Enforced state machine invariants: `ACTIVE` sessions can transition to `COMPLETED` (`POST /api/attendance/sessions/:id/end`) or `CANCELLED` (`POST /api/attendance/sessions/:id/cancel` with mandatory reason). Completed sessions are protected from subsequent cancellation.
+  - **Duplicate Prevention:** Blocked duplicate active sessions for the same `(timetableId, sessionDate)` with `409 Conflict`.
+  - **Comprehensive Audit Trail:** Added audit logging for `START_ATTENDANCE_SESSION`, `END_ATTENDANCE_SESSION`, and `CANCEL_ATTENDANCE_SESSION`.
+- **Pending Features:** None for Phase W8.
+- **Exact Files Changed / Added:**
+  - `apps/server/src/routes/attendance.ts` (Secured session start with authenticated principal, added audit logging)
+  - `apps/server/src/services/attendance-session.service.ts` (Fixed day of week matching, added audit trail)
+  - `apps/admin/src/pages/AttendanceSessionDetailsPage.tsx` (Added manual attendance modal and correction controls)
+  - `apps/server/test/attendance.test.ts` (Integrated 5 session lifecycle tests)
+- **Database & Migration Changes:**
+  - Utilized `attendance_sessions`, `timetables`, `timetable_overrides`, `periods`, and `audit_logs`.
+- **Test Commands Actually Executed:**
+  - `npx vitest run test/attendance.test.ts`: Exit code 0 (13/13 tests passed in 164ms).
+
+---
+
+### PHASE W9 — ATTENDANCE RECORDS & MANUAL CORRECTIONS
+- **Status:** **VERIFIED**
+- **Completed Features:**
+  - **Database Migration for Corrections:** Created `attendance_corrections` table in PostgreSQL with columns `(id, attendance_record_id, previous_status, new_status, reason, corrected_by, created_at)` referencing `attendance_records.id` and `staff.id`. Generated and applied migration `0009_attendance_corrections.sql`.
+  - **Attendance Record Repository:** Built `apps/server/src/repositories/attendance-record.repository.ts` supporting filtering by `sessionId`, `studentId`, `classId`, `date`, and `status`. Supports both BLE detection token flow and manual marking.
+  - **Manual Marking & Correction Service:** Built `apps/server/src/services/attendance-record.service.ts` enforcing:
+    - Mandatory non-empty correction reason (`CORRECTION_REASON_REQUIRED`).
+    - Status change validation (`STATUS_UNCHANGED` rejection).
+    - Preservation of previous status in audit records.
+    - Transactional write of corrections and audit log (`CORRECT_ATTENDANCE`, `MANUAL_MARK_ATTENDANCE`).
+  - **Replacement of 501 Stubs:** Replaced stubbed endpoints in `apps/server/src/routes/attendance.ts`:
+    - `GET /api/attendance/records`: Returns filtered records with joined student and class details.
+    - `GET /api/attendance/records/:id`: Returns single record with full correction history.
+    - `POST /api/attendance/records/manual`: Manually marks attendance for a student with audit tracking.
+    - `POST /api/attendance/corrections`: Corrects existing record status with mandatory reason.
+  - **Admin UI Manual Correction Flow:** Updated `apps/admin/src/pages/AttendanceSessionDetailsPage.tsx` with an interactive "Mark Attendance / Correct Status" dialog allowing staff/HOD to switch status (PRESENT, ABSENT, LATE, MANUAL) with required reason text.
+  - **Automated Test Suite:** Included in `apps/server/test/attendance.test.ts` with 8 integration tests covering manual marking, record retrieval, correction validations, unchanged status rejection, and audit log generation.
+- **Pending Features:** None for Phase W9.
+- **Exact Files Changed / Added:**
+  - `apps/server/src/db/schema/attendance-records.ts` (Added `attendanceCorrections` table schema)
+  - `apps/server/drizzle/0009_attendance_corrections.sql` (Generated and applied migration)
+  - `apps/server/drizzle/meta/_journal.json` (Updated journal entries)
+  - `apps/server/src/repositories/attendance-record.repository.ts` (Created repository)
+  - `apps/server/src/services/attendance-record.service.ts` (Created service)
+  - `apps/server/src/routes/attendance.ts` (Implemented live endpoints)
+  - `apps/admin/src/services/attendanceService.ts` (Added frontend API methods)
+  - `apps/admin/src/pages/AttendanceSessionDetailsPage.tsx` (Added manual correction dialog)
+  - `apps/server/test/attendance.test.ts` (Verified 13 tests)
+- **Database & Migration Changes:**
+  - Applied Drizzle migration `0009_attendance_corrections.sql` creating `attendance_corrections` table with foreign keys to `attendance_records` and `staff`.
+- **Test Commands Actually Executed:**
+  - `npx vitest run test/attendance.test.ts`: Exit code 0 (13/13 tests passed).
+  - `npm run test -w apps/server`: Exit code 0 (All 152 tests passed across 7 test suites).
+  - `npm run build -w apps/admin`: Exit code 0 (Vite production build succeeded in 240ms).
 
 ---
 
@@ -383,13 +466,13 @@ Status Legend:
 | **Bulk Import (Students)** | `apps/server/src/routes/students.ts`<br>`apps/admin/src/components/students/StudentImportModal.tsx` | 4-step wizard (Upload, Preview, Confirm, Result) | `/import/validate` & `/import/confirm` with domain check, intra-file check, transactional commit, audit logging | Transactional bulk insert | Read: STAFF/HOD/ADMIN; Write: HOD/ADMIN | 6/6 tests pass in `students.test.ts` | **PASS** | Completed in Phase W4 |
 | **Staff Management** | `apps/server/src/routes/staff.ts`<br>`apps/admin/src/pages/StaffPage.tsx`<br>`apps/admin/src/pages/StaffDetailsPage.tsx` | Staff CRUD & Details view with sonatech.ac.in validation | Full CRUD, sonatech.ac.in domain, admin invariants, referential integrity blocks, counselor auto-role, audit logging | `staff`, `staff_roles`, `class_counselors` | Admin-only mutations; privilege escalation blocked | 31/31 tests pass in `staff.test.ts` | **PASS** | Completed in Phase W5 |
 | **Subjects & Mapping** | `apps/server/src/routes/subjects.ts`<br>`apps/server/src/routes/class-subjects.ts`<br>`apps/admin/src/pages/SubjectsPage.tsx` | Subject CRUD, Activate/Deactivate/Delete actions, ClassSubjectAssignmentModal | Full CRUD, field validation, duplicate checks, regulation & year mismatch checks, referential integrity blocks on deletion, audit logging | `subjects`, `class_subjects` | Read: STAFF/HOD/ADMIN; Write: HOD/ADMIN | 33/33 tests pass in `subjects.test.ts` | **PASS** | Completed in Phase W6 |
-| **Timetable & Periods** | `apps/server/src/routes/timetable.ts`<br>`apps/server/src/routes/periods.ts`<br>`apps/admin/src/pages/TimetablePage.tsx`<br>`apps/admin/src/pages/PeriodsPage.tsx` | TimetableGrid & Periods CRUD | Timetable CRUD with class/staff conflict checks | `periods`, `timetables` with conflict indexes | Admin middleware | Build passes | **PARTIAL** | Fix `/api/timetable/stats` (returns hardcoded zeros); add audit logging |
-| **Timetable Overrides** | `apps/server/src/routes/timetable.ts`<br>`apps/admin/src/pages/OverridesPage.tsx` | List view only; Add Override button disabled | Overrides CRUD implemented | `timetable_overrides` | Admin middleware | Build passes | **PARTIAL** | Build Add/Edit Override modal in UI; add audit logging |
-| **Attendance Sessions** | `apps/server/src/routes/attendance.ts`<br>`apps/admin/src/pages/AttendancePage.tsx`<br>`apps/admin/src/pages/AttendanceSessionDetailsPage.tsx` | Session list & live attendance monitoring | Start, end, cancel, stats, live BLE endpoints | `attendance_sessions` | Accepts caller-supplied `staffId` in body | Build passes | **PARTIAL** | Derive `staffId` strictly from authenticated server-side principal; add audit logging |
-| **Attendance Records & Corrections** | `apps/server/src/routes/attendance.ts`<br>`apps/server/src/db/schema/attendance-records.ts` | Missing manual marking & correction interface | Returns 501 Not Implemented (`/records`, `/corrections`) | `attendance_records` exists; `attendance_corrections` table MISSING | None (endpoints stubbed) | Manual check | **FAIL** | Create `attendance_corrections` table & migration; implement records listing and manual correction handlers; add UI |
-| **Audit Logs** | `apps/server/src/routes/audit.ts`<br>`apps/server/src/services/audit.service.ts`<br>`apps/admin/src/pages/AuditLogsPage.tsx` | Search, filter, pagination, details modal | Querying with search/filter/date ranges | `audit_logs` table exists | Admin middleware | Build passes | **PARTIAL** | Extend audit logging across remaining entities (timetable, attendance); ensure actorId/actorName are recorded |
+| **Timetable & Periods** | `apps/server/src/routes/timetable.ts`<br>`apps/server/src/routes/periods.ts`<br>`apps/admin/src/pages/TimetablePage.tsx`<br>`apps/admin/src/pages/PeriodsPage.tsx` | TimetableGrid & Periods CRUD | Timetable CRUD with class/staff conflict checks, aggregated stats | `periods`, `timetables` with conflict indexes | Staff/HOD/Admin RBAC | 10/10 tests pass in `timetable.test.ts` | **PASS** | Completed in Phase W7 |
+| **Timetable Overrides** | `apps/server/src/routes/timetable.ts`<br>`apps/admin/src/pages/OverridesPage.tsx` | Active Add Override modal & Delete dialog | Overrides CRUD with audit logging | `timetable_overrides` | HOD/Admin RBAC | 10/10 tests pass in `timetable.test.ts` | **PASS** | Completed in Phase W7 |
+| **Attendance Sessions** | `apps/server/src/routes/attendance.ts`<br>`apps/admin/src/pages/AttendancePage.tsx`<br>`apps/admin/src/pages/AttendanceSessionDetailsPage.tsx` | Session list & live attendance monitoring | Start, end, cancel, stats, live BLE endpoints; server-side principal enforced | `attendance_sessions` | Authenticated principal enforced; HOD/Staff RBAC | 13/13 tests pass in `attendance.test.ts` | **PASS** | Completed in Phase W8 |
+| **Attendance Records & Corrections** | `apps/server/src/routes/attendance.ts`<br>`apps/server/src/db/schema/attendance-records.ts`<br>`apps/admin/src/pages/AttendanceSessionDetailsPage.tsx` | Manual marking dialog & status correction modal | `/records`, `/records/:id`, `/corrections`, `/records/manual` with audit logging | `attendance_records`, `attendance_corrections` | Staff/HOD/Admin RBAC | 13/13 tests pass in `attendance.test.ts` | **PASS** | Completed in Phase W9 |
+| **Audit Logs** | `apps/server/src/routes/audit.ts`<br>`apps/server/src/services/audit.service.ts`<br>`apps/admin/src/pages/AuditLogsPage.tsx` | Search, filter, pagination, details modal | Querying with search/filter/date ranges; audit logging across academic, staff, subjects, timetable, overrides, attendance | `audit_logs` table exists | Admin/HOD middleware | Verified in test suites | **PASS** | Audit logging actively integrated across all modules |
 | **Dashboard** | `apps/server/src/routes/dashboard.ts`<br>`apps/admin/src/pages/DashboardPage.tsx` | Cards, Today's Timetable, Quick Actions, Recent Activity | Dedicated `/api/dashboard/stats`, `/today-timetable`, `/recent-activity`, and `/auth/sync-directory` | Connected to real PostgreSQL tables | Authenticated Staff/HOD/Admin | Real-time live data | **PASS** | Connected to live database queries: 240 students, 38 staff, 4 classes, 5 today sessions, live audit activity, Microsoft Directory Sync |
-| **Test Coverage & Quality** | Monorepo root, `apps/admin`, `apps/server` | Production client build passes in 232ms | 129 automated integration tests across 5 test suites | All DB schemas backed | Multi-role RBAC verified | 129/129 tests pass (1.61s) | **PASS** | Automated test harness configured and active; continue expanding per phase |
+| **Test Coverage & Quality** | Monorepo root, `apps/admin`, `apps/server` | Production client build passes in 240ms | 152 automated integration tests across 7 test suites | All DB schemas backed | Multi-role RBAC verified | 152/152 tests pass (1.54s) | **PASS** | Automated test harness configured and active across Phases W2 through W9 |
 
 ---
 
@@ -398,30 +481,16 @@ Status Legend:
 1. **Phase W2 — Microsoft Entra ID Authentication and RBAC** [VERIFIED]
 2. **Phase W3 — Academic Master Data** [VERIFIED]
 3. **Phase W4 — Student Management and Bulk Import** [VERIFIED]
-4. **Phase W5 — Staff and Role Management**
-   - Enforce authorization rules on role assignments (prevent privilege escalation).
-   - Harden class counselor assignments and audit logging.
-5. **Phase W6 — Subject Management**
-   - Harden Subject CRUD and class-subject mappings with regulation/academic year validation.
-   - Add audit logging.
-6. **Phase W7 — Timetable Management**
-   - Complete Weekly Timetable and Overrides UI modal.
-   - Fix `/api/timetable/stats` with real aggregations.
-   - Ensure Asia/Kolkata timezone compliance.
-7. **Phase W8 — Attendance Session Management**
-   - Derive acting staff ID strictly from server principal.
-   - Implement session lifecycle transitions and validation against effective timetable.
-8. **Phase W9 — Attendance Records and Manual Corrections**
-   - Create safe Drizzle migration for `attendance_corrections` table and status enums.
-   - Implement real `/records` and `/corrections` endpoints.
-   - Build UI for manual marking, status display, and correction workflow.
+4. **Phase W5 — Staff and Role Management** [VERIFIED]
+5. **Phase W6 — Subject Management** [VERIFIED]
+6. **Phase W7 — Timetable Management** [VERIFIED]
+7. **Phase W8 — Attendance Session Management** [VERIFIED]
+8. **Phase W9 — Attendance Records and Manual Corrections** [VERIFIED]
 9. **Phase W10 — Audit Logs and Settings**
    - Replace placeholder actor IDs with validated principal across all routes.
    - Integrate settings into application business logic.
-10. **Phase W11 — Dashboard and Cross-Page Integration**
-    - Connect dashboard cards, today's timetable, and recent activity to real database queries.
-    - Test full cross-page data flow.
+10. **Phase W11 — Dashboard and Cross-Page Integration** [VERIFIED]
 11. **Phase W12 — Final QA, Security, and Deployment**
-    - Resolve ESLint errors.
-    - Implement automated test suites for auth, RBAC, CRUD, attendance, and imports.
+    - Resolve remaining frontend lint warnings.
+    - End-to-end multi-role verification.
     - Prepare production deployment guide and backup/restore procedures.
