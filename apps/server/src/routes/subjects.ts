@@ -1,12 +1,51 @@
 import { Hono } from "hono";
 import { SubjectService } from "../services/subject.service";
 import { ClassSubjectService } from "../services/class-subject.service";
+import { requireHodOrAdmin, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const subjectRoutes = new Hono();
 const service = new SubjectService();
 const classSubjectService = new ClassSubjectService();
 
-subjectRoutes.get("/", async (c) => {
+function getActorFromContext(c: any) {
+  const user = c.get('user') as AuthPrincipal | undefined;
+  return {
+    actorId: user?.id,
+    actorName: user?.name || user?.collegeEmail || 'System User',
+    actorRole: user?.roles?.[0] || 'ADMIN',
+    ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+  };
+}
+
+function handleSubjectError(c: any, error: any) {
+  const msg = error?.message || 'An unexpected error occurred.';
+  if (
+    msg.includes('already exists') ||
+    msg.includes('Cannot delete') ||
+    msg.includes('is referenced by')
+  ) {
+    return c.json({ success: false, error: { code: 'CONFLICT', message: msg } }, 409);
+  }
+  if (
+    msg.includes('not found') ||
+    msg.includes('Not found') ||
+    msg.includes('invalid input syntax for type uuid')
+  ) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: msg } }, 404);
+  }
+  if (
+    msg.includes('required') ||
+    msg.includes('must be') ||
+    msg.includes('Invalid')
+  ) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: msg } }, 400);
+  }
+  return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: msg } }, 500);
+}
+
+subjectRoutes.get("/", requireStaffOrAdmin, async (c) => {
   try {
     const search = c.req.query("search");
     const type = c.req.query("type");
@@ -19,79 +58,83 @@ subjectRoutes.get("/", async (c) => {
     const data = await service.getSubjects({ search, type, year, regulationId, status, page, limit });
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
+    return handleSubjectError(c, error);
   }
 });
 
-subjectRoutes.get("/stats", async (c) => {
-    try {
-        const data = await service.getSubjects({ limit: 10000 });
-        const total = data.pagination.total;
-        const active = data.subjects.filter(s => s.status === 'ACTIVE').length;
-        const theory = data.subjects.filter(s => s.subjectType === 'THEORY').length;
-        const lab = data.subjects.filter(s => s.subjectType === 'LAB').length;
+subjectRoutes.get("/stats", requireStaffOrAdmin, async (c) => {
+  try {
+    const data = await service.getSubjects({ limit: 10000 });
+    const total = data.pagination.total;
+    const active = data.subjects.filter(s => s.status === 'ACTIVE').length;
+    const theory = data.subjects.filter(s => s.subjectType === 'THEORY').length;
+    const lab = data.subjects.filter(s => s.subjectType === 'LAB').length;
 
-        return c.json({ success: true, data: { total, active, theory, lab } });
-    } catch (error: any) {
-        return c.json({ success: false, error: { message: error.message } }, 500);
-    }
+    return c.json({ success: true, data: { total, active, theory, lab } });
+  } catch (error: any) {
+    return handleSubjectError(c, error);
+  }
 });
 
-subjectRoutes.get("/:id", async (c) => {
+subjectRoutes.get("/:id", requireStaffOrAdmin, async (c) => {
   try {
-    const data = await service.getSubjectById(c.req.param("id"));
-    if (!data) return c.json({ success: false, error: { message: "Subject not found" } }, 404);
+    const data = await service.getSubjectById(c.req.param("id")!);
+    if (!data) return c.json({ success: false, error: { code: 'NOT_FOUND', message: "Subject not found." } }, 404);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
+    return handleSubjectError(c, error);
   }
 });
 
-subjectRoutes.post("/", async (c) => {
+subjectRoutes.post("/", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
-    const data = await service.createSubject(body);
+    const actor = getActorFromContext(c);
+    const data = await service.createSubject(body, actor);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
-    return c.json({ success: false, error: { code: error.message, message: error.message } }, 400);
+    return handleSubjectError(c, error);
   }
 });
 
-subjectRoutes.patch("/:id", async (c) => {
+subjectRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
-    const data = await service.updateSubject(c.req.param("id"), body);
+    const actor = getActorFromContext(c);
+    const data = await service.updateSubject(c.req.param("id")!, body, actor);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 400);
+    return handleSubjectError(c, error);
   }
 });
 
-subjectRoutes.patch("/:id/status", async (c) => {
+subjectRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
-    const data = await service.updateSubjectStatus(c.req.param("id"), body.status);
+    const actor = getActorFromContext(c);
+    const data = await service.updateSubjectStatus(c.req.param("id")!, body.status, actor);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 400);
+    return handleSubjectError(c, error);
   }
 });
 
-subjectRoutes.delete("/:id", async (c) => {
+subjectRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
   try {
-    await service.deleteSubject(c.req.param("id"));
+    const actor = getActorFromContext(c);
+    await service.deleteSubject(c.req.param("id")!, actor);
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 400);
+    return handleSubjectError(c, error);
   }
 });
 
 // Assigned classes
-subjectRoutes.get("/:id/classes", async (c) => {
+subjectRoutes.get("/:id/classes", requireStaffOrAdmin, async (c) => {
   try {
-    const data = await classSubjectService.getClassesBySubject(c.req.param("id"));
+    const data = await classSubjectService.getClassesBySubject(c.req.param("id")!);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
+    return handleSubjectError(c, error);
   }
 });

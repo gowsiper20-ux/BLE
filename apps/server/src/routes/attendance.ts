@@ -1,20 +1,26 @@
 import { Hono } from 'hono';
 import { AttendanceSessionService } from '../services/attendance-session.service';
+import { requireStaffOrAdmin } from '../middlewares/auth.middleware';
+import type { AuthPrincipal } from '@smart-attendance/shared';
 
 export const attendanceRoutes = new Hono();
 const service = new AttendanceSessionService();
 
-attendanceRoutes.post('/sessions/start', async (c) => {
+attendanceRoutes.post('/sessions/start', requireStaffOrAdmin, async (c) => {
   try {
+    const user = c.get('user') as AuthPrincipal;
     const body = await c.req.json();
-    const { timetableId, staffId, date } = body;
+    const { timetableId, date } = body;
     
-    // For now we trust the staffId passed in body for development
-    if (!timetableId || !staffId || !date) {
-      return c.json({ success: false, error: { message: "Missing required fields" } }, 400);
+    // Derive staffId from authenticated principal unless administrative override
+    const isLeadership = user.roles.some((r) => ['ADMIN', 'HOD', 'DEPUTY_HOD'].includes(r));
+    const effectiveStaffId = isLeadership && body.staffId ? body.staffId : user.id;
+
+    if (!timetableId || !date) {
+      return c.json({ success: false, error: { message: "Missing required fields: timetableId and date." } }, 400);
     }
 
-    const session = await service.startSession(timetableId, staffId, date);
+    const session = await service.startSession(timetableId, effectiveStaffId, date);
     return c.json({ success: true, data: session }, 201);
   } catch (error: any) {
     if (error.message === "SESSION_ALREADY_EXISTS") {

@@ -2,6 +2,10 @@ import { eq, ilike, and, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { staff, roles, staffRoles, classCounselors } from '../db/schema/staff';
 import { classes, academicYears } from '../db/schema/academic';
+import { timetables } from '../db/schema/timetable';
+import { attendanceSessions } from '../db/schema/attendance';
+import { attendanceRecords } from '../db/schema/attendance-records';
+import { externalIdentities } from '../db/schema/auth';
 
 export class StaffRepository {
   async getStaff(filters: { search?: string; status?: string; role?: string; page?: number; limit?: number }) {
@@ -12,11 +16,12 @@ export class StaffRepository {
     const conditions = [];
 
     if (filters.search) {
+      const q = `%${filters.search.trim()}%`;
       conditions.push(
         or(
-          ilike(staff.name, `%${filters.search}%`),
-          ilike(staff.staffCode, `%${filters.search}%`),
-          ilike(staff.collegeEmail, `%${filters.search}%`)
+          ilike(staff.name, q),
+          ilike(staff.staffCode, q),
+          ilike(staff.collegeEmail, q)
         )
       );
     }
@@ -51,16 +56,15 @@ export class StaffRepository {
       .offset(offset)
       .orderBy(staff.staffCode);
 
-    // Count is slightly tricky because of join, we can use a subquery or count distinct
     const countQuery = db
-      .select({ count: sql<number>`count(distinct ${staff.id})` })
+      .select({ count: sql<number>`cast(count(distinct ${staff.id}) as integer)` })
       .from(staff)
       .leftJoin(staffRoles, eq(staff.id, staffRoles.staffId))
       .leftJoin(roles, eq(staffRoles.roleId, roles.id))
       .where(whereClause);
 
     const [data, countResult] = await Promise.all([query, countQuery]);
-    const total = Number(countResult[0].count);
+    const total = Number(countResult[0]?.count || 0);
 
     return {
       staff: data,
@@ -68,7 +72,7 @@ export class StaffRepository {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit) || 1,
       }
     };
   }
@@ -94,12 +98,12 @@ export class StaffRepository {
   }
 
   async getStaffByCode(staffCode: string) {
-    const result = await db.select().from(staff).where(eq(staff.staffCode, staffCode));
+    const result = await db.select().from(staff).where(eq(staff.staffCode, staffCode.trim()));
     return result[0];
   }
 
   async getStaffByEmail(email: string) {
-    const result = await db.select().from(staff).where(eq(staff.collegeEmail, email));
+    const result = await db.select().from(staff).where(eq(staff.collegeEmail, email.trim().toLowerCase()));
     return result[0];
   }
 
@@ -109,6 +113,40 @@ export class StaffRepository {
 
   async updateStaff(id: string, data: Partial<typeof staff.$inferInsert>) {
     return db.update(staff).set({ ...data, updatedAt: new Date() }).where(eq(staff.id, id)).returning();
+  }
+
+  async getStaffReferenceCounts(id: string) {
+    const [tCount, sCount, rCount, cCount, adminCount] = await Promise.all([
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(timetables).where(eq(timetables.staffId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(attendanceSessions).where(eq(attendanceSessions.startedByStaffId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(attendanceRecords).where(eq(attendanceRecords.markedBy, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classCounselors).where(and(eq(classCounselors.staffId, id), eq(classCounselors.status, 'ACTIVE'))),
+      db.select({ count: sql<number>`cast(count(distinct ${staff.id}) as integer)` })
+        .from(staff)
+        .innerJoin(staffRoles, eq(staff.id, staffRoles.staffId))
+        .innerJoin(roles, eq(staffRoles.roleId, roles.id))
+        .where(and(eq(roles.name, 'ADMIN'), eq(staff.status, 'ACTIVE'))),
+    ]);
+
+    return {
+      timetablesCount: Number(tCount[0]?.count || 0),
+      sessionsCount: Number(sCount[0]?.count || 0),
+      markedRecordsCount: Number(rCount[0]?.count || 0),
+      activeCounselorsCount: Number(cCount[0]?.count || 0),
+      activeAdminCount: Number(adminCount[0]?.count || 0),
+    };
+  }
+
+  async deleteStaff(id: string) {
+    return db.transaction(async (tx) => {
+      // First delete associated external identities, roles, and counselors
+      await tx.delete(externalIdentities).where(eq(externalIdentities.staffId, id));
+      await tx.delete(staffRoles).where(eq(staffRoles.staffId, id));
+      await tx.delete(classCounselors).where(eq(classCounselors.staffId, id));
+      
+      // Then delete the staff member
+      return tx.delete(staff).where(eq(staff.id, id)).returning();
+    });
   }
 
   // --- Roles ---
@@ -169,6 +207,11 @@ export class StaffRepository {
     .orderBy(classes.name);
   }
 
+  async getCounselorById(id: string) {
+    const result = await db.select().from(classCounselors).where(eq(classCounselors.id, id));
+    return result[0];
+  }
+
   async getActiveCounselorForClass(classId: string, academicYearId: string) {
     const result = await db.select()
       .from(classCounselors)
@@ -202,16 +245,5 @@ export class StaffRepository {
 
   async deleteCounselorAssignment(id: string) {
     return db.delete(classCounselors).where(eq(classCounselors.id, id)).returning();
-  }
-
-  async deleteStaff(id: string) {
-    return db.transaction(async (tx) => {
-      // First delete associated roles and counselors
-      await tx.delete(staffRoles).where(eq(staffRoles.staffId, id));
-      await tx.delete(classCounselors).where(eq(classCounselors.staffId, id));
-      
-      // Then delete the staff member
-      return tx.delete(staff).where(eq(staff.id, id)).returning();
-    });
   }
 }

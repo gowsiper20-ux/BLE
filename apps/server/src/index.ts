@@ -17,7 +17,8 @@ import { periodRoutes } from "./routes/periods";
 import { attendanceRoutes } from "./routes/attendance";
 import { auditRoutes } from "./routes/audit";
 import { settingsRoutes } from "./routes/settings";
-import { requireAdminAuth } from "./middlewares/auth.middleware";
+import { dashboardRoutes } from "./routes/dashboard";
+import { authenticate } from "./middlewares/auth.middleware";
 
 const app = new Hono();
 
@@ -42,23 +43,23 @@ app.get("/", (c) => {
   });
 });
 
-// Global Admin Auth Middleware
+// Global Auth Middleware
 app.use("/api/*", async (c, next) => {
   const path = c.req.path;
   
-  // Whitelist paths that don't need Admin Auth
+  // Whitelist paths that don't need authentication
   const whitelist = [
     "/api/auth/login",
     "/api/auth/student/login",
+    "/api/auth/microsoft",
     "/api/auth/logout",
-    "/api/auth/me"
   ];
   
   if (whitelist.includes(path) || path.startsWith("/api/students/me/")) {
     return next();
   }
   
-  return requireAdminAuth(c, next);
+  return authenticate(c, next);
 });
 
 // Mount routes
@@ -75,6 +76,7 @@ app.route("/api/periods", periodRoutes);
 app.route("/api/attendance", attendanceRoutes);
 app.route("/api/audit", auditRoutes);
 app.route("/api/settings", settingsRoutes);
+app.route("/api/dashboard", dashboardRoutes);
 
 // 404 handler
 app.notFound((c) => {
@@ -89,15 +91,17 @@ app.onError((err, c) => {
 
 const port = parseInt(process.env.PORT || "3000", 10);
 
-serve(
-  {
-    fetch: app.fetch,
-    port,
-    hostname: "0.0.0.0",
-  },
-  (info) => {
-    console.log(`🚀 Smart Attendance API running on http://${info.address === '0.0.0.0' ? 'localhost' : info.address}:${info.port} (and LAN)`);
-  }
-);
+if (process.env.NODE_ENV !== 'test') {
+  serve(
+    {
+      fetch: app.fetch,
+      port,
+      hostname: "0.0.0.0",
+    },
+    (info) => {
+      console.log(`🚀 Smart Attendance API running on http://${info.address === '0.0.0.0' ? 'localhost' : info.address}:${info.port} (and LAN)`);
+    }
+  );
+}
 
 export default app;

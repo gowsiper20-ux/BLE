@@ -3,7 +3,32 @@
 // ============================================
 
 // --- Roles ---
-export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF';
+export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF' | 'STUDENT';
+
+export interface AuthPrincipal {
+  id: string;
+  name: string;
+  collegeEmail: string;
+  roles: UserRole[];
+  userType: 'STAFF' | 'STUDENT';
+  staffCode?: string;
+  registerNumber?: string;
+  microsoftUserId?: string | null;
+  tenantId?: string | null;
+}
+
+export interface ExternalIdentity {
+  id: string;
+  staffId?: string | null;
+  studentId?: string | null;
+  provider: string;
+  tenantId: string;
+  oid: string;
+  email: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+}
 
 // --- Academic ---
 export interface AcademicYear {
@@ -105,43 +130,8 @@ export interface StudentImportResult {
 }
 
 
-// --- Subjects ---
-export interface Subject {
-  id: string;
-  code: string;           // e.g. "CS3401"
-  name: string;           // e.g. "Database Management Systems"
-  shortName: string;      // e.g. "DBMS"
-  credits: number;
-  type: 'THEORY' | 'LAB' | 'ELECTIVE';
-  regulationId: string;
-  semester: number;
-  department: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 // --- Timetable ---
 export type DayOfWeek = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY';
-
-export interface Period {
-  id: string;
-  number: number;         // 1–8
-  startTime: string;      // "09:00"
-  endTime: string;        // "09:50"
-  type: 'REGULAR' | 'BREAK' | 'LUNCH';
-}
-
-export interface TimetableEntry {
-  id: string;
-  classId: string;
-  day: DayOfWeek;
-  periodId: string;
-  subjectId: string;
-  staffId: string;
-  academicYearId: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 
 export interface TimetableOverride {
@@ -269,7 +259,7 @@ export interface TableColumn<T> {
   label: string;
   sortable?: boolean;
   width?: string;
-  render?: (value: unknown, row: T) => React.ReactNode;
+  render?: (value: unknown, row: T) => any;
 }
 
 export interface SelectOption {

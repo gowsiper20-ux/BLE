@@ -3,7 +3,7 @@
 // ============================================
 
 // --- Roles ---
-export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF';
+export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF' | 'STUDENT';
 
 // --- Academic ---
 export interface AcademicYear {
@@ -106,15 +106,20 @@ export interface StudentImportResult {
 
 export interface Staff {
   id: string;
-  staffId: string;        // college staff ID
+  staffCode: string;
+  staffId?: string;        // college staff ID
   name: string;
-  email: string;
+  email?: string;
+  collegeEmail: string;
   microsoftId?: string;
-  role: UserRole;
-  department: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  microsoftUserId?: string | null;
+  role?: UserRole;
+  roles?: string[];
+  department?: string;
+  isActive?: boolean;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // --- Subjects ---
@@ -243,10 +248,10 @@ export interface AuditLog {
   timestamp: string;
 }
 
-// --- API ---
 export interface ApiResponse<T> {
   data: T;
   message?: string;
+  success?: boolean;
 }
 
 export interface PaginatedResponse<T> {
@@ -289,15 +294,6 @@ export interface SelectOption {
   label: string;
 }
 
-export interface Staff {
-  id: string;
-  staffCode: string;
-  name: string;
-  collegeEmail: string;
-  microsoftUserId?: string | null;
-  status: 'ACTIVE' | 'INACTIVE';
-  roles: string[];
-}
 
 export interface Role {
   id: string;

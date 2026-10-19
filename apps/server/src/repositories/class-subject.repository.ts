@@ -1,7 +1,8 @@
 import { db } from "../db";
 import { classSubjects, subjects } from "../db/schema/subjects";
 import { classes, academicYears, regulations } from "../db/schema/academic";
-import { eq, and } from "drizzle-orm";
+import { timetables } from "../db/schema/timetable";
+import { eq, and, sql } from "drizzle-orm";
 
 export class ClassSubjectRepository {
   async getByClassId(classId: string, academicYearId?: string) {
@@ -49,6 +50,56 @@ export class ClassSubjectRepository {
       .where(and(...conditions));
     
     return results;
+  }
+
+  async findById(id: string) {
+    const [result] = await db
+      .select({
+        id: classSubjects.id,
+        classId: classSubjects.classId,
+        subjectId: classSubjects.subjectId,
+        academicYearId: classSubjects.academicYearId,
+        status: classSubjects.status,
+        className: classes.name,
+        subjectCode: subjects.code,
+        subjectName: subjects.name,
+        subjectType: subjects.subjectType,
+        yearNumber: subjects.yearNumber,
+        academicYearName: academicYears.name,
+        createdAt: classSubjects.createdAt,
+        updatedAt: classSubjects.updatedAt
+      })
+      .from(classSubjects)
+      .innerJoin(classes, eq(classSubjects.classId, classes.id))
+      .innerJoin(subjects, eq(classSubjects.subjectId, subjects.id))
+      .innerJoin(academicYears, eq(classSubjects.academicYearId, academicYears.id))
+      .where(eq(classSubjects.id, id))
+      .limit(1);
+
+    return result || null;
+  }
+
+  async getClassSubjectReferenceCounts(id: string) {
+    const classSubject = await this.findById(id);
+    if (!classSubject) return null;
+
+    const [ttResult] = await db
+      .select({ count: sql`count(*)`.mapWith(Number) })
+      .from(timetables)
+      .where(
+        and(
+          eq(timetables.classId, classSubject.classId),
+          eq(timetables.subjectId, classSubject.subjectId),
+          eq(timetables.academicYearId, classSubject.academicYearId)
+        )
+      );
+
+    const timetableCount = ttResult?.count || 0;
+    return {
+      classSubject,
+      timetableCount,
+      total: timetableCount
+    };
   }
 
   async checkExists(classId: string, subjectId: string, academicYearId: string) {

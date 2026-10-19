@@ -3,7 +3,7 @@ import { timetables, periods } from "../db/schema/timetable";
 import { subjects } from "../db/schema/subjects";
 import { staff } from "../db/schema/staff";
 import { classes } from "../db/schema/academic";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 export class TimetableRepository {
   async findByClass(classId: string, academicYearId?: string) {
@@ -85,6 +85,74 @@ export class TimetableRepository {
     return null;
   }
 
+  async getTimetableStats(academicYearId?: string) {
+    const now = new Date();
+    const kolkataDay = now.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' }).toUpperCase();
+
+    const conditions = [];
+    if (academicYearId) conditions.push(eq(timetables.academicYearId, academicYearId));
+
+    const [totalRes] = await db
+      .select({ count: sql`count(*)`.mapWith(Number) })
+      .from(timetables)
+      .where(conditions.length ? and(...conditions) : undefined);
+
+    const todayConditions = [...conditions, eq(timetables.dayOfWeek, kolkataDay)];
+
+    const [todayRes] = await db
+      .select({
+        count: sql`count(*)`.mapWith(Number),
+        classesCount: sql`count(distinct ${timetables.classId})`.mapWith(Number),
+        staffCount: sql`count(distinct ${timetables.staffId})`.mapWith(Number)
+      })
+      .from(timetables)
+      .where(and(...todayConditions));
+
+    return {
+      totalEntries: totalRes?.count || 0,
+      todayEntries: todayRes?.count || 0,
+      classesScheduledToday: todayRes?.classesCount || 0,
+      staffScheduledToday: todayRes?.staffCount || 0,
+      dayOfWeek: kolkataDay
+    };
+  }
+
+  async getTodayTimetable(academicYearId?: string, classId?: string) {
+    const now = new Date();
+    const kolkataDay = now.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' }).toUpperCase();
+
+    const conditions = [eq(timetables.dayOfWeek, kolkataDay)];
+    if (academicYearId) conditions.push(eq(timetables.academicYearId, academicYearId));
+    if (classId) conditions.push(eq(timetables.classId, classId));
+
+    return await db
+      .select({
+        id: timetables.id,
+        academicYearId: timetables.academicYearId,
+        classId: timetables.classId,
+        className: classes.name,
+        dayOfWeek: timetables.dayOfWeek,
+        periodId: timetables.periodId,
+        periodNumber: periods.periodNumber,
+        periodName: periods.name,
+        periodStartTime: periods.startTime,
+        periodEndTime: periods.endTime,
+        subjectId: timetables.subjectId,
+        subjectCode: subjects.code,
+        subjectName: subjects.name,
+        subjectType: subjects.subjectType,
+        staffId: timetables.staffId,
+        staffName: staff.name,
+        status: timetables.status
+      })
+      .from(timetables)
+      .innerJoin(classes, eq(timetables.classId, classes.id))
+      .innerJoin(subjects, eq(timetables.subjectId, subjects.id))
+      .innerJoin(staff, eq(timetables.staffId, staff.id))
+      .innerJoin(periods, eq(timetables.periodId, periods.id))
+      .where(and(...conditions))
+      .orderBy(periods.periodNumber, classes.name);
+  }
 
   async findById(id: string) {
     const [result] = await db.select().from(timetables).where(eq(timetables.id, id)).limit(1);

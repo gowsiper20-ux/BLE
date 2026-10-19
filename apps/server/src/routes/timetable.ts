@@ -3,13 +3,14 @@ import { TimetableService } from "../services/timetable.service";
 import { TimetableOverrideService } from "../services/timetable-override.service";
 import { db } from "../db";
 import { count, eq } from "drizzle-orm";
+import { requireHodOrAdmin, requireStaffOrAdmin } from "../middlewares/auth.middleware";
 
 export const timetableRoutes = new Hono();
 const service = new TimetableService();
 const overrideService = new TimetableOverrideService();
 
 // --- Overrides ---
-timetableRoutes.get("/overrides", async (c) => {
+timetableRoutes.get("/overrides", requireStaffOrAdmin, async (c) => {
   try {
     const data = await overrideService.getOverrides();
     return c.json({ success: true, data });
@@ -18,10 +19,9 @@ timetableRoutes.get("/overrides", async (c) => {
   }
 });
 
-timetableRoutes.post("/overrides", async (c) => {
+timetableRoutes.post("/overrides", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
-    // Convert string to Date for the database
     if (body.overrideDate) {
       body.overrideDate = new Date(body.overrideDate);
     }
@@ -32,22 +32,22 @@ timetableRoutes.post("/overrides", async (c) => {
   }
 });
 
-timetableRoutes.patch("/overrides/:id", async (c) => {
+timetableRoutes.patch("/overrides/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     if (body.overrideDate) {
       body.overrideDate = new Date(body.overrideDate);
     }
-    const data = await overrideService.updateOverride(c.req.param("id"), body);
+    const data = await overrideService.updateOverride(c.req.param("id")!, body);
     return c.json({ success: true, data });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 400);
   }
 });
 
-timetableRoutes.delete("/overrides/:id", async (c) => {
+timetableRoutes.delete("/overrides/:id", requireHodOrAdmin, async (c) => {
   try {
-    await overrideService.deleteOverride(c.req.param("id"));
+    await overrideService.deleteOverride(c.req.param("id")!);
     return c.json({ success: true });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 400);
@@ -56,7 +56,7 @@ timetableRoutes.delete("/overrides/:id", async (c) => {
 
 // --- Core Timetable ---
 
-timetableRoutes.get("/", async (c) => {
+timetableRoutes.get("/", requireStaffOrAdmin, async (c) => {
   try {
     const classId = c.req.query("classId");
     const academicYearId = c.req.query("academicYearId");
@@ -68,7 +68,6 @@ timetableRoutes.get("/", async (c) => {
     } else if (staffId) {
       data = await service.getTimetableByStaff(staffId, academicYearId);
     } else {
-      // Just returning empty if neither provided for now
       data = [];
     }
 
@@ -78,7 +77,7 @@ timetableRoutes.get("/", async (c) => {
   }
 });
 
-timetableRoutes.post("/", async (c) => {
+timetableRoutes.post("/", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.createTimetableEntry(body);
@@ -88,19 +87,19 @@ timetableRoutes.post("/", async (c) => {
   }
 });
 
-timetableRoutes.patch("/:id", async (c) => {
+timetableRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
-    const data = await service.updateTimetableEntry(c.req.param("id"), body);
+    const data = await service.updateTimetableEntry(c.req.param("id")!, body);
     return c.json({ success: true, data });
   } catch (error: any) {
     return c.json({ success: false, error: { code: error.message, message: error.message } }, 409);
   }
 });
 
-timetableRoutes.delete("/:id", async (c) => {
+timetableRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
   try {
-    await service.deleteTimetableEntry(c.req.param("id"));
+    await service.deleteTimetableEntry(c.req.param("id")!);
     return c.json({ success: true });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 400);
@@ -108,18 +107,22 @@ timetableRoutes.delete("/:id", async (c) => {
 });
 
 // --- Additional Routes ---
-timetableRoutes.get("/stats", async (c) => {
+timetableRoutes.get("/stats", requireStaffOrAdmin, async (c) => {
   try {
-    // A proper implementation would run real aggregation queries for the rest
-    return c.json({
-      success: true,
-      data: {
-        totalEntries: 0,
-        todayEntries: 0,
-        classesScheduledToday: 0,
-        staffScheduledToday: 0
-      }
-    });
+    const academicYearId = c.req.query("academicYearId");
+    const data = await service.getTimetableStats(academicYearId);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: { message: error.message } }, 500);
+  }
+});
+
+timetableRoutes.get("/today", requireStaffOrAdmin, async (c) => {
+  try {
+    const academicYearId = c.req.query("academicYearId");
+    const classId = c.req.query("classId");
+    const data = await service.getTodayTimetable(academicYearId, classId);
+    return c.json({ success: true, data });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 500);
   }

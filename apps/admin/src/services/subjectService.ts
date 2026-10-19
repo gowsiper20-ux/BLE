@@ -31,5 +31,15 @@ export const subjectService = {
   deactivateSubject: async (id: string) => {
     const res = await api.patch<{ data: Subject }>(`/api/subjects/${id}/status`, { status: 'INACTIVE' });
     return res.data;
+  },
+
+  activateSubject: async (id: string) => {
+    const res = await api.patch<{ data: Subject }>(`/api/subjects/${id}/status`, { status: 'ACTIVE' });
+    return res.data;
+  },
+
+  deleteSubject: async (id: string) => {
+    const res = await api.delete<{ success: boolean }>(`/api/subjects/${id}`);
+    return res;
   }
 };

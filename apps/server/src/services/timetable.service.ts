@@ -88,6 +88,14 @@ export class TimetableService {
     return await this.repo.update(id, data);
   }
 
+  async getTimetableStats(academicYearId?: string) {
+    return await this.repo.getTimetableStats(academicYearId);
+  }
+
+  async getTodayTimetable(academicYearId?: string, classId?: string) {
+    return await this.repo.getTodayTimetable(academicYearId, classId);
+  }
+
   async deleteTimetableEntry(id: string) {
     return await this.repo.delete(id);
   }

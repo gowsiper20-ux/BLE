@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "db:setup": "tsx scripts/setup-db.ts",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts"
+    "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.3",
@@ -14,6 +15,7 @@
     "dotenv": "^18.0.5",
     "drizzle-orm": "^0.45.3",
     "hono": "^4.0.0",
+    "jose": "^6.2.12",
     "papaparse": "^5.7.0",
     "postgres": "^3.4.9",
     "xlsx": "^0.18.5"
@@ -24,6 +26,7 @@
     "@types/papaparse": "^5.5.2",
     "drizzle-kit": "^0.31.11",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^5.0.5"
   }
 }

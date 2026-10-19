@@ -83,7 +83,10 @@ export default function CounselorAssignmentModal({ isOpen, onClose, onSuccess }:
           label="Academic Year"
           value={academicYearId}
           onChange={setAcademicYearId}
-          options={yearsResponse?.data?.map(y => ({ value: y.id, label: y.name })) || []}
+          options={[
+            { value: '', label: 'Select Academic Year...' },
+            ...(yearsResponse?.data?.map(y => ({ value: y.id, label: y.name })) || [])
+          ]}
           required
         />
 
@@ -91,7 +94,10 @@ export default function CounselorAssignmentModal({ isOpen, onClose, onSuccess }:
           label="Class"
           value={classId}
           onChange={setClassId}
-          options={classesResponse?.data?.filter(c => c.status === 'ACTIVE').map(c => ({ value: c.id, label: c.name })) || []}
+          options={[
+            { value: '', label: 'Select Class...' },
+            ...(classesResponse?.data?.filter(c => c.status === 'ACTIVE').map(c => ({ value: c.id, label: c.name })) || [])
+          ]}
           required
         />
 
@@ -99,7 +105,10 @@ export default function CounselorAssignmentModal({ isOpen, onClose, onSuccess }:
           label="Staff"
           value={staffId}
           onChange={setStaffId}
-          options={activeStaff.map(s => ({ value: s.id, label: `${s.name} (${s.staffCode})` }))}
+          options={[
+            { value: '', label: 'Select Staff Member...' },
+            ...activeStaff.map(s => ({ value: s.id, label: `${s.name} (${s.staffCode})` }))
+          ]}
           required
         />
 

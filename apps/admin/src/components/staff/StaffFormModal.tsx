@@ -49,17 +49,22 @@ export default function StaffFormModal({ isOpen, onClose, onSuccess, staff }: St
       return;
     }
 
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(collegeEmail)) {
-      setError('Invalid college email format.');
+    if (!/^[A-Za-z0-9_-]{3,20}$/.test(staffCode.trim())) {
+      setError('Staff code must be 3-20 alphanumeric characters (hyphens and underscores allowed).');
+      return;
+    }
+
+    if (!/^[^@\s]+@sonatech\.ac\.in$/i.test(collegeEmail.trim())) {
+      setError('Staff email must belong to the official college domain (@sonatech.ac.in).');
       return;
     }
 
     setIsSubmitting(true);
     try {
       const payload = {
-        staffCode,
-        name,
-        collegeEmail,
+        staffCode: staffCode.trim().toUpperCase(),
+        name: name.trim(),
+        collegeEmail: collegeEmail.trim().toLowerCase(),
         status,
         roles: selectedRoles,
       };
@@ -107,7 +112,7 @@ export default function StaffFormModal({ isOpen, onClose, onSuccess, staff }: St
         <Input
           label="College Email"
           type="email"
-          placeholder="e.g. kumar@college.edu"
+          placeholder="e.g. kumar@sonatech.ac.in"
           value={collegeEmail}
           onChange={(e) => setCollegeEmail(e.target.value)}
           required

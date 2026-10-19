@@ -1,76 +1,199 @@
 import { Context, Next } from 'hono';
-import { StudentRepository } from '../repositories/student.repository';
-import { StaffRepository } from '../repositories/staff.repository';
-import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
+import { msAuthService } from '../services/ms-auth.service';
+import { db } from '../db';
+import { classCounselors } from '../db/schema/staff';
+import { eq, and } from 'drizzle-orm';
+import type { UserRole, AuthPrincipal } from '@smart-attendance/shared';
 
-const studentRepo = new StudentRepository();
-const staffRepo = new StaffRepository();
-
-// Smallest clean development-only mapping
-const DEV_STUDENT_MAPPING: Record<string, string> = {
-  'DEV-STUDENT-001': '61782324106032' // Harinarayanan S, III IT-A
-};
-
-export const requireStudentAuth = async (c: Context, next: Next) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ success: false, error: { message: 'Unauthorized' } }, 401);
+// Extend Hono Context Variables
+declare module 'hono' {
+  interface ContextVariableMap {
+    user: AuthPrincipal;
+    student?: any;
   }
+}
 
-  const token = authHeader.split(' ')[1];
-  
-  // Development token resolution
-  let registerNumber = token;
-  if (DEV_STUDENT_MAPPING[token]) {
-    registerNumber = DEV_STUDENT_MAPPING[token];
-  }
-
-  try {
-    const student = await studentRepo.getStudentByRegisterNumber(registerNumber);
-    
-    if (!student || student.status !== 'ACTIVE') {
-      return c.json({ success: false, error: { message: 'Student not found or inactive' } }, 401);
-    }
-
-    c.set('student', student);
-    await next();
-  } catch (error) {
-    return c.json({ success: false, error: { message: 'Authentication failed' } }, 401);
-  }
-};
-
-export const requireAdminAuth = async (c: Context, next: Next) => {
+/**
+ * Global authentication middleware.
+ * Resolves identity from either an application session JWT or a direct Microsoft Entra access token.
+ */
+export const authenticate = async (c: Context, next: Next) => {
   const adminToken = getCookie(c, 'admin_token');
   const authHeader = c.req.header('Authorization');
-  let token = adminToken;
-  
-  if (!token && authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.split(' ')[1];
+  let token: string | undefined = adminToken;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1]?.trim();
   }
 
   if (!token) {
-    return c.json({ success: false, error: { message: 'Unauthorized' } }, 401);
+    return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required. No bearer token or session cookie provided.' } }, 401);
   }
 
   try {
-    const secret = process.env.JWT_SECRET || 'secret';
-    const decoded = await verify(token, secret, 'HS256') as any;
-    
-    // Quick role check from token
-    if (decoded.role !== 'ADMIN') {
-      return c.json({ success: false, error: { message: 'Forbidden: Admin access required' } }, 403);
-    }
-    
-    // Verify against DB to ensure user wasn't deactivated
-    const fullStaffUser = await staffRepo.getStaffById(decoded.id);
-    if (!fullStaffUser || fullStaffUser.status !== 'ACTIVE' || !fullStaffUser.roles?.includes('ADMIN')) {
-      return c.json({ success: false, error: { message: 'Unauthorized or Forbidden' } }, 401);
+    let principal: AuthPrincipal | null = null;
+
+    // 1. Try verifying as an internal session JWT
+    try {
+      principal = await msAuthService.verifySessionToken(token);
+    } catch (sessionErr: any) {
+      // 2. If not a valid session token, try verifying directly as a Microsoft Entra ID token
+      try {
+        const claims = await msAuthService.validateMicrosoftToken(token);
+        principal = await msAuthService.resolveUserIdentity(claims);
+      } catch (msErr: any) {
+        return c.json({
+          success: false,
+          error: {
+            code: 'INVALID_TOKEN',
+            message: msErr.message || 'Token verification failed.',
+          },
+        }, 401);
+      }
     }
 
-    c.set('user', fullStaffUser);
+    if (!principal) {
+      return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Unable to resolve identity.' } }, 401);
+    }
+
+    c.set('user', principal);
     await next();
-  } catch (error) {
-    return c.json({ success: false, error: { message: 'Invalid or expired token' } }, 401);
+  } catch (err: any) {
+    return c.json({
+      success: false,
+      error: {
+        code: 'AUTH_FAILED',
+        message: err.message || 'Authentication error.',
+      },
+    }, 401);
   }
+};
+
+/**
+ * RBAC middleware: requires the authenticated principal to have at least one of the specified roles.
+ */
+export const requireRole = (...allowedRoles: UserRole[]) => {
+  return async (c: Context, next: Next) => {
+    const user = c.get('user') as AuthPrincipal | undefined;
+
+    if (!user) {
+      return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } }, 401);
+    }
+
+    const hasAllowedRole = user.roles.some((role) => allowedRoles.includes(role));
+
+    if (!hasAllowedRole) {
+      return c.json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: `Access denied. Required role: [${allowedRoles.join(', ')}]. Your active roles: [${user.roles.join(', ')}].`,
+        },
+      }, 403);
+    }
+
+    await next();
+  };
+};
+
+/**
+ * Backward compatibility: Require ADMIN role
+ */
+export const requireAdminAuth = async (c: Context, next: Next) => {
+  let user = c.get('user') as AuthPrincipal | undefined;
+  if (!user) {
+    const authRes = await authenticate(c, async () => {
+      user = c.get('user') as AuthPrincipal | undefined;
+    });
+    if (authRes) return authRes;
+  }
+
+  user = c.get('user') as AuthPrincipal | undefined;
+  if (!user?.roles?.includes('ADMIN')) {
+    return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'Forbidden: Admin access required.' } }, 403);
+  }
+
+  await next();
+};
+
+/**
+ * Department-level oversight: ADMIN, HOD, or DEPUTY_HOD
+ */
+export const requireHodOrAdmin = requireRole('ADMIN', 'HOD', 'DEPUTY_HOD');
+
+/**
+ * Any staff member or administrator
+ */
+export const requireStaffOrAdmin = requireRole('ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF');
+
+/**
+ * Class-level resource authorization check:
+ * Allows ADMIN, HOD, DEPUTY_HOD unconditionally, or CLASS_COUNSELOR if assigned to the target classId.
+ */
+export const requireClassCounselorOrAdmin = (getClassId: (c: Context) => string | undefined) => {
+  return async (c: Context, next: Next) => {
+    const user = c.get('user') as AuthPrincipal;
+    if (!user) {
+      return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } }, 401);
+    }
+
+    // Admins and HODs have department-wide class access
+    if (user.roles.includes('ADMIN') || user.roles.includes('HOD') || user.roles.includes('DEPUTY_HOD')) {
+      return next();
+    }
+
+    // Class counselor check
+    if (user.roles.includes('CLASS_COUNSELOR')) {
+      const classId = getClassId(c);
+      if (!classId) {
+        return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Class identifier is required for access verification.' } }, 400);
+      }
+
+      const assignment = await db
+        .select()
+        .from(classCounselors)
+        .where(
+          and(
+            eq(classCounselors.staffId, user.id),
+            eq(classCounselors.classId, classId),
+            eq(classCounselors.status, 'ACTIVE')
+          )
+        )
+        .then((rows) => rows[0]);
+
+      if (assignment) {
+        return next();
+      }
+    }
+
+    return c.json({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Access denied: You are not authorized to view or manage this class.',
+      },
+    }, 403);
+  };
+};
+
+/**
+ * Student authentication middleware
+ */
+export const requireStudentAuth = async (c: Context, next: Next) => {
+  let user = c.get('user') as AuthPrincipal | undefined;
+  if (!user) {
+    const authRes = await authenticate(c, async () => {
+      user = c.get('user') as AuthPrincipal | undefined;
+    });
+    if (authRes) return authRes;
+  }
+
+  user = c.get('user') as AuthPrincipal | undefined;
+  if (user?.userType !== 'STUDENT' && !user?.roles?.includes('STUDENT')) {
+    return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'Student access required.' } }, 403);
+  }
+
+  c.set('student', user);
+  await next();
 };

@@ -118,10 +118,22 @@ export default function AcademicYearsPage() {
     }
   ], []);
 
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this academic year? This action cannot be undone.')) return;
+    try {
+      await api.delete(`/api/academic-years/${id}`);
+      showToast('success', 'Academic year deleted successfully');
+      refetch();
+    } catch (err: any) {
+      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to delete academic year');
+    }
+  };
+
   const renderActions = (row: AcademicYear) => (
     <div style={{ display: 'flex', gap: '8px' }}>
-      <Button variant="ghost" size="sm" onClick={() => openModal(row)}>Edit</Button>
-      {/* Real delete is prevented by DB if referenced, but we can allow trying or just status change */}
+      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openModal(row); }}>Edit</Button>
+      <Button variant="danger" size="sm" onClick={(e) => handleDelete(e, row.id)}>Delete</Button>
     </div>
   );
 

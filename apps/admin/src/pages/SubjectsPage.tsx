@@ -32,10 +32,11 @@ export default function SubjectsPage() {
   const [filterRegulationId, setFilterRegulationId] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
-  // UI States
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [subjectToDeactivate, setSubjectToDeactivate] = useState<Subject | null>(null);
+  const [subjectToActivate, setSubjectToActivate] = useState<Subject | null>(null);
+  const [subjectToDelete, setSubjectToDelete] = useState<Subject | null>(null);
 
   const fetchSubjects = useCallback(async () => {
     setLoading(true);
@@ -86,6 +87,32 @@ export default function SubjectsPage() {
     }
   };
 
+  const handleActivate = async () => {
+    if (!subjectToActivate) return;
+    try {
+      await subjectService.activateSubject(subjectToActivate.id);
+      showToast('success', 'Subject activated successfully');
+      fetchSubjects();
+    } catch (err: any) {
+      showToast('error', err.response?.data?.error?.message || 'Failed to activate subject');
+    } finally {
+      setSubjectToActivate(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!subjectToDelete) return;
+    try {
+      await subjectService.deleteSubject(subjectToDelete.id);
+      showToast('success', 'Subject deleted successfully');
+      fetchSubjects();
+    } catch (err: any) {
+      showToast('error', err.response?.data?.error?.message || 'Failed to delete subject');
+    } finally {
+      setSubjectToDelete(null);
+    }
+  };
+
   const columns: TableColumn<Subject>[] = useMemo(() => [
     { key: 'code', label: 'Code', sortable: true },
     { key: 'name', label: 'Subject Name', sortable: true },
@@ -118,11 +145,18 @@ export default function SubjectsPage() {
       <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
         Edit
       </Button>
-      {row.status === 'ACTIVE' && (
-        <Button variant="ghost" size="sm" onClick={() => setSubjectToDeactivate(row)} style={{ color: 'var(--color-danger)' }}>
+      {row.status === 'ACTIVE' ? (
+        <Button variant="ghost" size="sm" onClick={() => setSubjectToDeactivate(row)} style={{ color: 'var(--color-warning)' }}>
           Deactivate
         </Button>
+      ) : (
+        <Button variant="ghost" size="sm" onClick={() => setSubjectToActivate(row)} style={{ color: 'var(--color-success)' }}>
+          Activate
+        </Button>
       )}
+      <Button variant="ghost" size="sm" onClick={() => setSubjectToDelete(row)} style={{ color: 'var(--color-danger)' }}>
+        Delete
+      </Button>
     </div>
   );
 
@@ -229,6 +263,28 @@ export default function SubjectsPage() {
         cancelLabel="Cancel"
         onConfirm={handleDeactivate}
         onClose={() => setSubjectToDeactivate(null)}
+        variant="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={!!subjectToActivate}
+        title="Activate Subject?"
+        message={`Activating ${subjectToActivate?.code} - ${subjectToActivate?.name} will allow it to be assigned to classes.`}
+        confirmLabel="Activate"
+        cancelLabel="Cancel"
+        onConfirm={handleActivate}
+        onClose={() => setSubjectToActivate(null)}
+        variant="primary"
+      />
+
+      <ConfirmDialog
+        isOpen={!!subjectToDelete}
+        title="Delete Subject?"
+        message={`Are you sure you want to permanently delete ${subjectToDelete?.code} - ${subjectToDelete?.name}? If this subject has linked class mappings or timetables, deletion will be blocked.`}
+        confirmLabel="Delete Permanently"
+        cancelLabel="Cancel"
+        onConfirm={handleDelete}
+        onClose={() => setSubjectToDelete(null)}
         variant="danger"
       />
     </div>

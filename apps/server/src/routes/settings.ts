@@ -1,12 +1,15 @@
 import { Hono } from "hono";
 import { SettingsService } from "../services/settings.service";
 import { AuditService } from "../services/audit.service";
+import { requireRole, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const settingsRoutes = new Hono();
 const settingsService = new SettingsService();
 const auditService = new AuditService();
 
-settingsRoutes.get("/", async (c) => {
+// Any staff or administrator can view system settings
+settingsRoutes.get("/", requireStaffOrAdmin, async (c) => {
   try {
     const category = c.req.query("category");
     const settings = category 
@@ -25,22 +28,24 @@ settingsRoutes.get("/", async (c) => {
   }
 });
 
-settingsRoutes.put("/", async (c) => {
+// Only administrators can update system settings
+settingsRoutes.put("/", requireRole('ADMIN'), async (c) => {
   try {
+    const user = c.get("user") as AuthPrincipal;
     const body = await c.req.json();
     const updates = body.updates as { key: string; value: string }[];
-    // Mock user for now
-    const staffId = "00000000-0000-0000-0000-000000000000"; // Should come from JWT
     
     if (!updates || !Array.isArray(updates)) {
       return c.json({ success: false, error: { message: "Invalid updates payload" } }, 400);
     }
 
-    const payload = updates.map(u => ({ ...u, updatedBy: undefined }));
-    
+    const payload = updates.map(u => ({ ...u, updatedBy: user.id }));
     const results = await settingsService.updateSettings(payload);
 
     await auditService.log({
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.roles[0] || 'ADMIN',
       action: 'UPDATE',
       entityType: 'SETTINGS',
       description: `Updated ${results.length} system settings`,

@@ -57,6 +57,11 @@ export default function StudentFormModal({ isOpen, onClose, onSuccess, student }
       return;
     }
 
+    if (!collegeEmail.toLowerCase().endsWith('@sonatech.ac.in')) {
+      setError('College email must belong to @sonatech.ac.in');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const payload = {

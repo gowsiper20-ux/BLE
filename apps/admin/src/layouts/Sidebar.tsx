@@ -1,13 +1,16 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import Icon from '../components/Icon';
+import { useAuth } from '../contexts/AuthContext';
+import type { UserRole } from '../types';
 import './Sidebar.css';
 
 interface NavItem {
   label: string;
   path: string;
   icon: string;
-  children?: { label: string; path: string }[];
+  allowedRoles?: UserRole[];
+  children?: { label: string; path: string; allowedRoles?: UserRole[] }[];
 }
 
 const navigation: NavItem[] = [
@@ -16,6 +19,7 @@ const navigation: NavItem[] = [
     label: 'Academic',
     path: '/academic',
     icon: 'academic',
+    allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF'],
     children: [
       { label: 'Academic Years', path: '/academic-years' },
       { label: 'Batches', path: '/batches' },
@@ -23,25 +27,27 @@ const navigation: NavItem[] = [
       { label: 'Classes', path: '/classes' },
     ],
   },
-  { label: 'Students', path: '/students', icon: 'students' },
-  { label: 'Staff', path: '/staff', icon: 'staff' },
-  { label: 'Subjects', path: '/subjects', icon: 'subjects' },
+  { label: 'Students', path: '/students', icon: 'students', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF'] },
+  { label: 'Staff', path: '/staff', icon: 'staff', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD'] },
+  { label: 'Subjects', path: '/subjects', icon: 'subjects', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF'] },
   {
     label: 'Timetable',
     path: '/timetable',
     icon: 'timetable',
+    allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF'],
     children: [
       { label: 'Weekly Timetable', path: '/timetable' },
       { label: 'Overrides', path: '/timetable/overrides' },
     ],
   },
-  { label: 'Attendance', path: '/attendance', icon: 'attendance' },
-  { label: 'Audit Logs', path: '/audit-logs', icon: 'audit' },
-  { label: 'Settings', path: '/settings', icon: 'settings' },
+  { label: 'Attendance', path: '/attendance', icon: 'attendance', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF'] },
+  { label: 'Audit Logs', path: '/audit-logs', icon: 'audit', allowedRoles: ['ADMIN'] },
+  { label: 'Settings', path: '/settings', icon: 'settings', allowedRoles: ['ADMIN'] },
 ];
 
 export default function Sidebar() {
   const location = useLocation();
+  const { hasAnyRole } = useAuth();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const toggleExpand = (label: string) => {
@@ -55,6 +61,11 @@ export default function Sidebar() {
     return location.pathname === item.path;
   };
 
+  const visibleNavigation = navigation.filter((item) => {
+    if (!item.allowedRoles || item.allowedRoles.length === 0) return true;
+    return hasAnyRole(item.allowedRoles);
+  });
+
   return (
     <aside className="sidebar" role="navigation" aria-label="Main navigation">
       <div className="sidebar__brand">
@@ -63,7 +74,7 @@ export default function Sidebar() {
 
       <nav className="sidebar__nav">
         <ul className="sidebar__list">
-          {navigation.map((item) => (
+          {visibleNavigation.map((item) => (
             <li key={item.label} className="sidebar__item">
               {item.children ? (
                 <>
@@ -84,18 +95,20 @@ export default function Sidebar() {
                   </button>
                   {(expanded[item.label] || isActiveParent(item)) && (
                     <ul className="sidebar__sublist">
-                      {item.children.map((child) => (
-                        <li key={child.path}>
-                          <NavLink
-                            to={child.path}
-                            className={({ isActive }) =>
-                              `sidebar__sublink ${isActive ? 'sidebar__sublink--active' : ''}`
-                            }
-                          >
-                            {child.label}
-                          </NavLink>
-                        </li>
-                      ))}
+                      {item.children
+                        .filter((child) => !child.allowedRoles || hasAnyRole(child.allowedRoles))
+                        .map((child) => (
+                          <li key={child.path}>
+                            <NavLink
+                              to={child.path}
+                              className={({ isActive }) =>
+                                `sidebar__sublink ${isActive ? 'sidebar__sublink--active' : ''}`
+                              }
+                            >
+                              {child.label}
+                            </NavLink>
+                          </li>
+                        ))}
                     </ul>
                   )}
                 </>

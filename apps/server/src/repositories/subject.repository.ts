@@ -1,7 +1,8 @@
 import { db } from "../db";
-import { subjects } from "../db/schema/subjects";
+import { subjects, classSubjects } from "../db/schema/subjects";
 import { eq, and, like, or, sql } from "drizzle-orm";
 import { regulations } from "../db/schema/academic";
+import { timetables, timetableOverrides } from "../db/schema/timetable";
 
 export class SubjectRepository {
   async findSubjects(params: { search?: string; type?: string; year?: number; regulationId?: string; status?: string; limit?: number; offset?: number }) {
@@ -36,6 +37,7 @@ export class SubjectRepository {
       .from(subjects)
       .leftJoin(regulations, eq(subjects.regulationId, regulations.id))
       .where(and(...conditions))
+      .orderBy(subjects.code)
       .limit(params.limit || 20)
       .offset(params.offset || 0);
 
@@ -48,7 +50,7 @@ export class SubjectRepository {
 
     return {
       data: result,
-      total: countResult.count
+      total: countResult?.count || 0
     };
   }
 
@@ -76,8 +78,41 @@ export class SubjectRepository {
   }
 
   async findByCode(code: string) {
-    const [result] = await db.select().from(subjects).where(eq(subjects.code, code)).limit(1);
+    const clean = code.trim();
+    const [result] = await db
+      .select()
+      .from(subjects)
+      .where(sql`lower(${subjects.code}) = lower(${clean})`)
+      .limit(1);
     return result || null;
+  }
+
+  async getSubjectReferenceCounts(subjectId: string) {
+    const [classSubResult] = await db
+      .select({ count: sql`count(*)`.mapWith(Number) })
+      .from(classSubjects)
+      .where(eq(classSubjects.subjectId, subjectId));
+
+    const [timetableResult] = await db
+      .select({ count: sql`count(*)`.mapWith(Number) })
+      .from(timetables)
+      .where(eq(timetables.subjectId, subjectId));
+
+    const [overrideResult] = await db
+      .select({ count: sql`count(*)`.mapWith(Number) })
+      .from(timetableOverrides)
+      .where(eq(timetableOverrides.replacementSubjectId, subjectId));
+
+    const classSubjectCount = classSubResult?.count || 0;
+    const timetableCount = timetableResult?.count || 0;
+    const overrideCount = overrideResult?.count || 0;
+
+    return {
+      classSubjectCount,
+      timetableCount,
+      overrideCount,
+      total: classSubjectCount + timetableCount + overrideCount
+    };
   }
 
   async create(data: any) {

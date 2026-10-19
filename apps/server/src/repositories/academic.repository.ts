@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql, ne } from 'drizzle-orm';
 import { db } from '../db';
 import {
   departments,
@@ -7,11 +7,25 @@ import {
   regulations,
   classes,
 } from '../db/schema/academic';
+import { subjects, classSubjects } from '../db/schema/subjects';
+import { timetables } from '../db/schema/timetable';
+import { classCounselors } from '../db/schema/staff';
+import { students } from '../db/schema/students';
 
 export class AcademicRepository {
   // Departments
   async getDepartments() {
-    return db.select().from(departments);
+    return db.select().from(departments).orderBy(departments.name);
+  }
+
+  async getDepartmentById(id: string) {
+    const result = await db.select().from(departments).where(eq(departments.id, id));
+    return result[0];
+  }
+
+  async getDepartmentByCode(code: string) {
+    const result = await db.select().from(departments).where(eq(departments.code, code));
+    return result[0];
   }
 
   // Academic Years
@@ -34,6 +48,20 @@ export class AcademicRepository {
     return result[0];
   }
 
+  async unsetCurrentAcademicYears(exceptId?: string) {
+    if (exceptId) {
+      await db
+        .update(academicYears)
+        .set({ isCurrent: false, updatedAt: new Date() })
+        .where(and(ne(academicYears.id, exceptId), eq(academicYears.isCurrent, true)));
+    } else {
+      await db
+        .update(academicYears)
+        .set({ isCurrent: false, updatedAt: new Date() })
+        .where(eq(academicYears.isCurrent, true));
+    }
+  }
+
   async createAcademicYear(data: typeof academicYears.$inferInsert) {
     return db.insert(academicYears).values(data).returning();
   }
@@ -44,6 +72,22 @@ export class AcademicRepository {
 
   async deleteAcademicYear(id: string) {
     return db.delete(academicYears).where(eq(academicYears.id, id)).returning();
+  }
+
+  async getAcademicYearReferenceCounts(id: string) {
+    const [cCount, csCount, tCount, ccCount] = await Promise.all([
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classes).where(eq(classes.academicYearId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classSubjects).where(eq(classSubjects.academicYearId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(timetables).where(eq(timetables.academicYearId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classCounselors).where(eq(classCounselors.academicYearId, id)),
+    ]);
+
+    return {
+      classesCount: Number(cCount[0]?.count || 0),
+      classSubjectsCount: Number(csCount[0]?.count || 0),
+      timetablesCount: Number(tCount[0]?.count || 0),
+      counselorsCount: Number(ccCount[0]?.count || 0),
+    };
   }
 
   // Batches
@@ -85,6 +129,16 @@ export class AcademicRepository {
     return db.delete(batches).where(eq(batches.id, id)).returning();
   }
 
+  async getBatchReferenceCounts(id: string) {
+    const [cCount] = await Promise.all([
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classes).where(eq(classes.batchId, id)),
+    ]);
+
+    return {
+      classesCount: Number(cCount[0]?.count || 0),
+    };
+  }
+
   // Regulations
   async getRegulations() {
     return db.select().from(regulations).orderBy(regulations.year);
@@ -92,6 +146,11 @@ export class AcademicRepository {
 
   async getRegulationById(id: string) {
     const result = await db.select().from(regulations).where(eq(regulations.id, id));
+    return result[0];
+  }
+
+  async getRegulationByName(name: string) {
+    const result = await db.select().from(regulations).where(eq(regulations.name, name));
     return result[0];
   }
 
@@ -105,6 +164,18 @@ export class AcademicRepository {
 
   async deleteRegulation(id: string) {
     return db.delete(regulations).where(eq(regulations.id, id)).returning();
+  }
+
+  async getRegulationReferenceCounts(id: string) {
+    const [cCount, sCount] = await Promise.all([
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classes).where(eq(classes.regulationId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(subjects).where(eq(subjects.regulationId, id)),
+    ]);
+
+    return {
+      classesCount: Number(cCount[0]?.count || 0),
+      subjectsCount: Number(sCount[0]?.count || 0),
+    };
   }
 
   // Classes
@@ -160,5 +231,21 @@ export class AcademicRepository {
 
   async deleteClass(id: string) {
     return db.delete(classes).where(eq(classes.id, id)).returning();
+  }
+
+  async getClassReferenceCounts(id: string) {
+    const [sCount, csCount, tCount, ccCount] = await Promise.all([
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(students).where(eq(students.classId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classSubjects).where(eq(classSubjects.classId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(timetables).where(eq(timetables.classId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classCounselors).where(eq(classCounselors.classId, id)),
+    ]);
+
+    return {
+      studentsCount: Number(sCount[0]?.count || 0),
+      classSubjectsCount: Number(csCount[0]?.count || 0),
+      timetablesCount: Number(tCount[0]?.count || 0),
+      counselorsCount: Number(ccCount[0]?.count || 0),
+    };
   }
 }

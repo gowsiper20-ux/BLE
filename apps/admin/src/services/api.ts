@@ -4,9 +4,29 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 class ApiClient {
   private baseUrl: string;
+  private token: string | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
+  }
+
+  setToken(token: string | null) {
+    this.token = token;
+    if (typeof window !== 'undefined') {
+      if (token) {
+        sessionStorage.setItem('sona_access_token', token);
+      } else {
+        sessionStorage.removeItem('sona_access_token');
+      }
+    }
+  }
+
+  getToken(): string | null {
+    if (this.token) return this.token;
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('sona_access_token');
+    }
+    return null;
   }
 
   private async request<T>(
@@ -14,10 +34,20 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
+    const token = this.getToken();
+
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    const defaultHeaders: Record<string, string> = {};
+    if (!isFormData) {
+      defaultHeaders['Content-Type'] = 'application/json';
+    }
+    if (token) {
+      defaultHeaders['Authorization'] = `Bearer ${token}`;
+    }
 
     const config: RequestInit = {
       headers: {
-        'Content-Type': 'application/json',
+        ...defaultHeaders,
         ...options.headers,
       },
       credentials: 'include',

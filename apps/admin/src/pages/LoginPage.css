@@ -102,6 +102,61 @@
   line-height: 1.5;
 }
 
+.login-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 8px 0;
+  color: #888;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #E0E0E0;
+}
+
+.login-divider span {
+  padding: 0 12px;
+}
+
+.microsoft-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  background: #FFFFFF;
+  border: 1px solid #D0D5DD;
+  border-radius: 8px;
+  color: #2F2F2F;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.microsoft-btn:hover:not(:disabled) {
+  background: #F8F9FA;
+  border-color: #005696;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.microsoft-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.microsoft-icon-svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -318,3 +373,136 @@
     font-size: 0.75rem;
   }
 }
+
+/* Quick Demo Credentials Bar */
+.quick-credentials {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -6px;
+  margin-bottom: 2px;
+}
+
+.quick-credentials__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6C757D;
+}
+
+.quick-cred-pill {
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #1E293B;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-cred-pill:hover {
+  background: #E2E8F0;
+  border-color: #0066CC;
+  color: #0066CC;
+}
+
+/* Microsoft Entra ID Modal Styles */
+.entra-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.entra-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.entra-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.entra-account-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.entra-account-item:hover:not(:disabled) {
+  background: #F0F7FF;
+  border-color: #0066CC;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.1);
+}
+
+.entra-account-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.entra-account-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.entra-account-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.entra-account-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entra-account-email {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entra-account-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #EAF4FF;
+  color: #005696;
+  white-space: nowrap;
+}
+
+.entra-setup-note {
+  font-size: 0.775rem;
+  color: #64748B;
+  background: #F8FAFC;
+  border: 1px dashed #CBD5E1;
+  border-radius: 6px;
+  padding: 8px 12px;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
