@@ -24,7 +24,11 @@ function handleSubjectError(c: any, error: any) {
   if (
     msg.includes('already exists') ||
     msg.includes('Cannot delete') ||
-    msg.includes('is referenced by')
+    msg.includes('is referenced by') ||
+    msg.includes('unverified legacy') ||
+    msg.includes('cannot be overwritten') ||
+    msg.includes('cannot be edited') ||
+    msg.includes('cannot be changed')
   ) {
     return c.json({ success: false, error: { code: 'CONFLICT', message: msg } }, 409);
   }

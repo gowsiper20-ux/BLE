@@ -9,6 +9,9 @@ export type SubjectType = typeof subjectTypes[number];
 export const subjectStatuses = ['ACTIVE', 'INACTIVE'] as const;
 export type SubjectStatus = typeof subjectStatuses[number];
 
+export const subjectDataSources = ['MANUALLY_ENTERED', 'LEGACY_UNVERIFIED'] as const;
+export type SubjectDataSource = typeof subjectDataSources[number];
+
 export const subjects = pgTable('subjects', {
   id: uuid('id').primaryKey().defaultRandom(),
   code: varchar('code', { length: 50 }).notNull().unique(),
@@ -18,6 +21,7 @@ export const subjects = pgTable('subjects', {
   yearNumber: integer('year_number').notNull(),
   regulationId: uuid('regulation_id').references(() => regulations.id).notNull(),
   status: varchar('status', { length: 50 }).notNull().default('ACTIVE'),
+  dataSource: varchar('data_source', { length: 50 }).$type<SubjectDataSource>().notNull().default('LEGACY_UNVERIFIED'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 });

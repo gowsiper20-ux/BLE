@@ -69,6 +69,8 @@ npm install
 
 Copy the relevant `.env.example` file to `.env` and replace the placeholders with local values. `.env` files are ignored by Git and must not be committed.
 
+For Microsoft Entra and Graph setup, required permissions, and current provisioning limitations, see [Microsoft Entra setup](./docs/MICROSOFT_ENTRA_SETUP.md).
+
 #### Admin Frontend (`apps/admin/.env`)
 
 ```env
@@ -144,17 +146,18 @@ cd apps/admin && npx vite build
 
 ## Database Setup
 
-Copy `apps/server/.env.example` to `apps/server/.env` and set your local PostgreSQL password and a unique `JWT_SECRET`. Then set up the database, apply migrations, and create the local admin account:
+Copy `apps/server/.env.example` to `apps/server/.env` and set your local PostgreSQL password and a unique `JWT_SECRET`. Then set up the database and apply migrations:
 
 ```bash
 npm run db:setup -w apps/server
 npm run db:migrate -w apps/server
-npm run db:bootstrap-admin -w apps/server
 ```
 
-For local development, the bootstrap script defaults to `admin@college.edu` / `Admin@123`. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `apps/server/.env` to choose different credentials. Change the default password before exposing the server beyond your local machine.
+The former default-admin bootstrap is disabled because it created an unverified identity with a default password. Do not provision an administrator or assign roles using fabricated accounts or guessed Entra group IDs. See the Entra setup guide for current login and authorization blockers.
 
 ## Admin Dashboard
+
+> The route and API status tables below are historical scaffold documentation and do not describe the current implementation or verify the provenance of database records.
 
 ### Available Routes
 

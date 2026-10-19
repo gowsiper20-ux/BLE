@@ -29,6 +29,8 @@ interface DirectoryStatus {
   verifiedClassValues: number;
   academicAttributesConfigured: boolean;
   membershipMode: string | null;
+  studentGroupIdsConfigured: boolean;
+  staffGroupIdsConfigured: boolean;
   lastSuccessfulFullSync: string | null;
   latestAttempt: {
     status: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
@@ -109,7 +111,7 @@ export default function StudentsPage() {
         ? 'The latest directory synchronization failed. See the synchronization failure details above.'
         : !status.lastSuccessfulFullSync
           ? 'No successful full directory synchronization has completed.'
-          : !status.verifiedGroupClassifications
+          : !status.studentGroupIdsConfigured || !status.membershipMode
             ? 'Verified IT student group IDs and approved membership semantics are not configured.'
             : total === 0 && !filterBatch && !filterClass && !filterStatus && !searchQuery
               ? 'The last successful sync found no users in the verified IT student groups.'
@@ -153,20 +155,22 @@ export default function StudentsPage() {
 
       {status && (
         <div role="status" style={{ padding: '12px 16px', borderRadius: 6, background: syncFailed ? '#FDECEC' : '#F1F6FC', color: syncFailed ? '#A11' : '#1E3A8A' }}>
-          <div>
+          {status.lastSuccessfulFullSync ? <div>
             <strong>Synchronized tenant users:</strong> {status.totalSynchronizedUsers} ·{' '}
-            <strong>Verified IT students:</strong> {status.verifiedItStudentIdentities} ·{' '}
-            <strong>Verified IT faculty/staff:</strong> {status.verifiedItFacultyStaffIdentities} ·{' '}
+            <strong>Verified IT students:</strong> {status.studentGroupIdsConfigured && status.membershipMode ? status.verifiedItStudentIdentities : 'Unavailable — group classification not configured'} ·{' '}
+            <strong>Verified IT faculty/staff:</strong> {status.staffGroupIdsConfigured && status.membershipMode ? status.verifiedItFacultyStaffIdentities : 'Unavailable — group classification not configured'} ·{' '}
             <strong>Unclassified:</strong> {status.unclassifiedUsers} ·{' '}
             <strong>Disabled:</strong> {status.disabledAccounts} ·{' '}
             <strong>Conflicting groups:</strong> {status.conflictingGroupClassifications}
-          </div>
-          <div>
-            <strong>Verified batch/class values:</strong> {status.verifiedBatchValues}/{status.verifiedClassValues} ·{' '}
+          </div> : <div>No successful full Entra sync is available; directory counts are unavailable, not zero.</div>}
+          {status.lastSuccessfulFullSync && <div>
+            <strong>Verified batch/class values:</strong> {status.studentGroupIdsConfigured && status.membershipMode
+              ? `${status.verifiedBatchValues}/${status.verifiedClassValues}`
+              : 'Unavailable — student-group classification not configured'} ·{' '}
             <strong>Last successful full sync:</strong> {status.lastSuccessfulFullSync
               ? new Date(status.lastSuccessfulFullSync).toLocaleString()
               : 'Never'}
-          </div>
+          </div>}
           {syncFailed && latestFailure && (
             <div role="alert">
               Latest synchronization failure ({latestFailure.errorCode || 'unknown'}
@@ -251,7 +255,9 @@ export default function StudentsPage() {
           onPageChange={setPage}
         />
         <div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Verified directory students: {total} · page size {PAGE_SIZE}
+          {status?.lastSuccessfulFullSync && status.studentGroupIdsConfigured && status.membershipMode
+            ? <>Verified directory students: {total} · page size {PAGE_SIZE}</>
+            : 'Verified directory student count unavailable until a successful full sync and verified student-group configuration.'}
           {!status?.academicAttributesConfigured && ' · Academic batch/class attributes are not configured'}
         </div>
       </div>

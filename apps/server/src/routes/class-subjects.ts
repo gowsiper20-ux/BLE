@@ -22,7 +22,8 @@ function handleClassSubjectError(c: any, error: any) {
   if (
     msg.includes('already assigned') ||
     msg.includes('Cannot remove') ||
-    msg.includes('timetable schedule(s) are assigned')
+    msg.includes('timetable schedule(s) are assigned') ||
+    msg.includes('Unverified legacy subjects')
   ) {
     return c.json({ success: false, error: { code: 'CONFLICT', message: msg } }, 409);
   }

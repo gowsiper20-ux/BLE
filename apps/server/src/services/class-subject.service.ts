@@ -43,6 +43,9 @@ export class ClassSubjectService {
 
     const subject = await this.subjectRepo.findById(data.subjectId);
     if (!subject) throw new Error("Subject not found.");
+    if (subject.dataSource !== 'MANUALLY_ENTERED') {
+      throw new Error("Unverified legacy subjects cannot be assigned to new classes.");
+    }
     if (subject.status !== 'ACTIVE') throw new Error("Cannot assign inactive subject to class.");
 
     const classData = await this.academicRepo.getClassById(data.classId);

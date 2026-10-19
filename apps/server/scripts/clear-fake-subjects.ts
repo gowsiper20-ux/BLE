@@ -1,28 +1,3 @@
-import 'dotenv/config';
-import { db } from '../src/db';
-import { subjects, classSubjects } from '../src/db/schema/subjects';
-
-async function clearSubjects() {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Data cleanup scripts are disabled in production.');
-  }
-  console.log('Clearing subject data...');
-
-  try {
-    // Delete class subjects
-    console.log('Deleting class subject allocations...');
-    await db.delete(classSubjects);
-
-    // Delete subjects
-    console.log('Deleting subjects...');
-    await db.delete(subjects);
-
-    console.log('Subject data cleared successfully.');
-  } catch (error) {
-    console.error('Error clearing subjects:', error);
-  } finally {
-    process.exit(0);
-  }
-}
-
-clearSubjects();
+throw new Error(
+  "Disabled: subject cleanup requires a verified backup, record provenance review, and historical dependency analysis.",
+);

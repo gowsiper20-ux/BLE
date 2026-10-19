@@ -6,13 +6,14 @@ import { timetables, timetableOverrides } from "../db/schema/timetable";
 
 export class SubjectRepository {
   async findSubjects(params: { search?: string; type?: string; year?: number; regulationId?: string; status?: string; limit?: number; offset?: number }) {
-    const conditions = [];
+    const conditions = [eq(subjects.dataSource, 'MANUALLY_ENTERED')];
 
     if (params.search) {
-      conditions.push(or(
+      const searchCondition = or(
         like(subjects.code, `%${params.search}%`),
         like(subjects.name, `%${params.search}%`)
-      ));
+      );
+      if (searchCondition) conditions.push(searchCondition);
     }
 
     if (params.type) conditions.push(eq(subjects.subjectType, params.type));
@@ -31,6 +32,7 @@ export class SubjectRepository {
         regulationId: subjects.regulationId,
         regulationName: regulations.name,
         status: subjects.status,
+        dataSource: subjects.dataSource,
         createdAt: subjects.createdAt,
         updatedAt: subjects.updatedAt
       })
@@ -66,6 +68,7 @@ export class SubjectRepository {
         regulationId: subjects.regulationId,
         regulationName: regulations.name,
         status: subjects.status,
+        dataSource: subjects.dataSource,
         createdAt: subjects.createdAt,
         updatedAt: subjects.updatedAt
       })

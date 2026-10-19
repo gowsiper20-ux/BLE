@@ -14,7 +14,21 @@ import * as auditSchema from './schema/audit';
 import * as settingsSchema from './schema/settings';
 import * as authSchema from './schema/auth';
 
-const connectionString = process.env.DATABASE_URL!;
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL must be set before connecting to PostgreSQL.');
+}
+
+if (process.env.NODE_ENV === 'test') {
+  const databaseUrl = new URL(connectionString);
+  const databaseName = decodeURIComponent(databaseUrl.pathname.slice(1));
+  if (
+    !['localhost', '127.0.0.1', '::1'].includes(databaseUrl.hostname) ||
+    !databaseName.endsWith('_test')
+  ) {
+    throw new Error('Refusing to run server tests against a non-loopback database whose name does not end in _test.');
+  }
+}
 
 // Disable prefetch as it is not supported for "Transaction" pool mode
 export const client = postgres(connectionString, { prepare: false });

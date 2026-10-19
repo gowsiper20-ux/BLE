@@ -58,6 +58,8 @@ interface DirectoryStatus {
   verifiedClassValues: number;
   academicAttributesConfigured: boolean;
   membershipMode: string | null;
+  studentGroupIdsConfigured: boolean;
+  staffGroupIdsConfigured: boolean;
   lastSuccessfulFullSync: string | null;
   lastSyncCounts: { pagesProcessed: number; usersScanned: number } | null;
   latestAttempt: {
@@ -210,21 +212,25 @@ export default function DashboardPage() {
         >
           <div>
             <strong>Directory source:</strong> {dirStatus.source} ·{' '}
+            {dirStatus.lastSuccessfulFullSync ? <>
             <strong>Synchronized tenant users:</strong> {dirStatus.totalSynchronizedUsers} ·{' '}
-            <strong>Verified IT students:</strong> {dirStatus.verifiedItStudentIdentities} ·{' '}
-            <strong>Verified IT faculty/staff:</strong> {dirStatus.verifiedItFacultyStaffIdentities} ·{' '}
+            <strong>Verified IT students:</strong> {dirStatus.studentGroupIdsConfigured && dirStatus.membershipMode ? dirStatus.verifiedItStudentIdentities : 'Unavailable — group classification not configured'} ·{' '}
+            <strong>Verified IT faculty/staff:</strong> {dirStatus.staffGroupIdsConfigured && dirStatus.membershipMode ? dirStatus.verifiedItFacultyStaffIdentities : 'Unavailable — group classification not configured'} ·{' '}
             <strong>Unclassified:</strong> {dirStatus.unclassifiedUsers} ·{' '}
             <strong>Conflicting classifications:</strong> {dirStatus.conflictingGroupClassifications} ·{' '}
             <strong>Disabled accounts:</strong> {dirStatus.disabledAccounts}
+            </> : 'No successful full Entra sync; directory counts are unavailable, not zero.'}
           </div>
-          <div>
-            <strong>Verified batch/class values:</strong> {dirStatus.verifiedBatchValues}/{dirStatus.verifiedClassValues} ·{' '}
+          {dirStatus.lastSuccessfulFullSync && <div>
+            <strong>Verified batch/class values:</strong> {dirStatus.studentGroupIdsConfigured && dirStatus.membershipMode
+              ? `${dirStatus.verifiedBatchValues}/${dirStatus.verifiedClassValues}`
+              : 'Unavailable — student-group classification not configured'} ·{' '}
             <strong>Stored identity rows (not necessarily in last successful sync):</strong> {dirStatus.storedIdentityRows} ·{' '}
             <strong>Membership semantics:</strong> {dirStatus.membershipMode || 'not approved/configured'} ·{' '}
             <strong>Last successful full sync:</strong> {dirStatus.lastSuccessfulFullSync
               ? new Date(dirStatus.lastSuccessfulFullSync).toLocaleString()
               : 'Never'}
-          </div>
+          </div>}
           {dirStatus.lastSyncCounts && (
             <div>
               <strong>Last successful full-sync snapshot:</strong> {dirStatus.lastSyncCounts.usersScanned} users across {dirStatus.lastSyncCounts.pagesProcessed} pages
@@ -380,6 +386,9 @@ export default function DashboardPage() {
           <Card className="dashboard-page__section" padding="none">
             <div className="section-header">
               <h3 className="section-header__title">Recent Activity</h3>
+            </div>
+            <div role="note" style={{ padding: '0 16px 12px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+              Application audit activity only; it is not an Entra audit feed and may refer to unverified legacy records.
             </div>
             <ul className="activity-list">
               {activityLoading ? (

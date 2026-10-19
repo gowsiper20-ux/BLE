@@ -4,6 +4,8 @@
 > Persistent Progress Tracker: Controlled Phases W1 through W12  
 > Initialized: October 18, 2026  
 > Last Updated: Phase W6 Verified (October 19, 2026)
+>
+> **Verification notice (October 19, 2026):** This is a historical development log, not current verification evidence. Earlier claims of authentic/verified directory or academic data, auto-provisioning, and successful live synchronization are not substantiated by the current implementation or tenant configuration. Legacy database rows and historical counts must be treated as unverified; do not use them as official college records.
 
 ---
 
@@ -12,16 +14,16 @@
 | Phase | Identifier & Name | Status | Acceptance Criteria Passed | Blockers / Critical Notes |
 |---|---|---|---|---|
 | **W1** | Repository Audit and Baseline | **VERIFIED** | All criteria passed (Audit, baseline checks, matrix, findings) | Zero existing tests; lint errors in admin |
-| **W2** | Microsoft Entra ID Authentication & RBAC | **VERIFIED** | All criteria passed (MSAL, JWT JWKS, domain check, fail-closed, RBAC guards, 15 tests) | Verified with `@sonatech.ac.in` domain and real Sona IT data |
+| **W2** | Microsoft Entra ID Authentication & RBAC | **IMPLEMENTED — NOT VERIFIED** | MSAL and JWT validation code present; tenant app registration, consent, account provisioning, and production role mapping remain unverified | Local IDs/scope align structurally; successful tenant login has not been verified |
 | **W3** | Academic Master Data | **VERIFIED** | All criteria passed (Years, Batches, Regulations, Classes, referential integrity, audit logs, RBAC, 28 tests) | Invariants & referential integrity protected |
 | **W4** | Student Management & Bulk Import | **VERIFIED** | All criteria passed (Student CRUD, college domain validation, register number format, pre-delete checks, transactional bulk import, preview validation, templates, RBAC, 22 tests) | 65/65 total integration tests passing |
 | **W5** | Staff & Role Management | **VERIFIED** | All criteria passed (Staff CRUD, sonatech.ac.in domain, RBAC guards, role assignment, privilege escalation prevention, admin deletion invariants, counselor management, referential integrity blocks, audit logs, 31 tests) | 96/96 total integration tests passing |
 | **W6** | Subject Management | **VERIFIED** | All criteria passed (Subject CRUD, field validation, duplicate detection, referential integrity blocks against class_subjects/timetables/overrides, class-subject assignment, regulation & year level validation, timetable removal blocks, audit logs, 33 tests) | 129/129 total integration tests passing |
-| **W7** | Timetable Management | **VERIFIED** | All criteria passed (Timetable CRUD, class/staff conflict detection, overrides management, Asia/Kolkata timezone schedule, stats aggregation, audit logs, UI modal, 10 tests) | Complete & connected with real DB |
+| **W7** | Timetable Management | **IMPLEMENTED — NOT VERIFIED** | Timetable CRUD and UI exist | Existing timetable and period rows have no verified official-source provenance |
 | **W8** | Attendance Session Management | **VERIFIED** | All criteria passed (Session start/end/cancel lifecycle, server principal staff derivation, 24-hr & early window validation, override staff precedence, audit logs, 5 tests) | Authenticated principal enforced |
 | **W9** | Attendance Records & Manual Corrections | **VERIFIED** | All criteria passed (attendance_corrections table, Drizzle migration 0009, manual marking, status correction with mandatory reason, historical audit, UI modal, 8 tests) | 152/152 total integration tests passing |
 | **W10** | Audit Logs & Settings | NOT STARTED | - | Depends on authenticated principal |
-| **W11** | Dashboard & Cross-Page Integration | **VERIFIED** | Connected real queries (240 students, 38 staff, 4 classes, 5 today sessions, live audit activity, Microsoft Directory Sync) | Zero mock data in dashboard |
+| **W11** | Dashboard & Cross-Page Integration | **IMPLEMENTED — NOT VERIFIED** | Dashboard queries application tables and exposes directory sync status | Legacy counts, timetable, and attendance are unverified; no successful current Graph sync has been established |
 | **W12** | Final QA, Security, & Deployment | NOT STARTED | - | End-to-end verification, test suites |
 
 Status Legend:
@@ -81,22 +83,22 @@ Status Legend:
 ---
 
 ### PHASE W2 — MICROSOFT ENTRA ID AUTHENTICATION AND RBAC
-- **Status:** **VERIFIED**
+- **Status:** **IMPLEMENTED — NOT VERIFIED AGAINST THE OWNER'S TENANT**
 - **Completed Features:**
   - **Microsoft Entra ID & MSAL React Integration:** Configured `@azure/msal-browser` and `@azure/msal-react` in `apps/admin/src/config/msalConfig.ts`, initialized singleton `PublicClientApplication` with single-tenant configuration and `sessionStorage` caching. Added `MsalProvider` in `apps/admin/src/main.tsx`.
   - **SONA Branded Login UI:** Integrated "Sign in with College Account (@sonatech.ac.in)" button with official Microsoft 4-square SVG logo alongside existing password form in `LoginPage.tsx` adhering to SONA blue (`#005696`, `#002B49`) styling.
   - **Database Identity Mapping:** Created `external_identities` table in PostgreSQL with columns `(id, staff_id, student_id, provider, tenant_id, oid, college_email, status, created_at, updated_at)` and unique index `ext_identities_tenant_oid_idx` on `(tenant_id, oid)`. Generated and executed Drizzle migration `0008_microsoft_external_identities.sql` on live PostgreSQL.
   - **Shared Types:** Updated `packages/shared/index.ts` with `STUDENT` in `UserRole`, `AuthPrincipal`, `ExternalIdentity`, and removed obsolete draft types.
-  - **Token Validation Service:** Built `apps/server/src/services/ms-auth.service.ts` using `jose` library: validates token signature via Microsoft JWKS endpoint (`https://login.microsoftonline.com/{tenantId}/discovery/v2.0/keys`), verifies tenant ID match, audience match, token expiration, enforces `@sonatech.ac.in` domain restriction, rejects untrusted tenants, and supports auto-provisioning for college accounts.
-  - **User Resolution & Auto-Linking:** In `msAuthService.resolveUserIdentity()`, active staff/student records are resolved by Microsoft OID or verified college email; newly authenticated users have their external identity automatically linked in `external_identities`. Supports seamless auto-provisioning for verified Sona College accounts (`@sonatech.ac.in`) when enabled for demo/college project access.
-  - **Real-World Sona College IT Department Data:** Pre-seeded PostgreSQL with authentic Information Technology department records: Department (`IT`), Academic Years (`2026–2027`), Regulations (`R2021`, `R2023`), Batches (`2023–2027`, `2024–2028`), 4 Classes (`II IT-A`, `II IT-B`, `III IT-A`, `III IT-B`), 11 Faculty/Staff with `@sonatech.ac.in` emails (HOD Dr. J. Akilandeswari, Deputy HOD Dr. M. Suresh, Counselors Dr. P. Kavitha, Dr. S. Senthilkumar, Dr. R. Priya, and teaching faculty), 38 Students with Sona register numbers (`6178...`) and `@sonatech.ac.in` emails, 8 IT curriculum subjects, class-subject assignments, 7 periods, and weekly timetable schedules.
+  - **Token Validation Service:** Built `apps/server/src/services/ms-auth.service.ts` using `jose` to validate Microsoft JWT signatures, issuer, configured tenant, audience, expiration, object ID, and required delegated scope. Tenant app registration and emitted token claims have not been verified against the owner's Entra tenant.
+  - **User Resolution:** `msAuthService.resolveUserIdentity()` accepts only an existing tenant/object-ID mapping linked to an active legacy staff or student row. It does not auto-provision or link new directory users. A Graph sync alone therefore does not make an unlinked user eligible to sign in.
+  - **Legacy Academic Data:** Historical seed data may exist in the local database, but no record-level provenance establishes that it is authoritative. Treat student, staff, class, subject, period, timetable, and attendance rows as unverified; do not use them as official records or delete them without a backup and provenance review.
   - **Removal of Hardcoded JWT Secret:** Replaced insecure `'secret'` fallback with `msAuthService.getJwtSecret()`, throwing error in production if `JWT_SECRET` is missing.
   - **Multi-Role RBAC Middleware:** In `apps/server/src/middlewares/auth.middleware.ts`, replaced monolithic admin lock with modular guards: `authenticate`, `requireRole(...)`, `requireHodOrAdmin`, `requireStaffOrAdmin`, `requireClassCounselorOrAdmin`, and `requireStudentAuth`.
   - **Route Security Hardening:** Mounted `authenticate` globally on `/api/*` in `apps/server/src/index.ts` (whitelisting only `/login`, `/microsoft`, `/logout`). Added role guards across all routes (`settings.ts`, `staff.ts`, `academic.ts`, `timetable.ts`, `subjects.ts`, `attendance.ts`, `students.ts`). Replaced caller-supplied IDs with authenticated server-side principal.
   - **Privilege Escalation Prevention:** Enforced `requireRole('ADMIN')` on staff role assignments (`POST /api/staff/:id/roles`) and system settings updates (`PUT /api/settings`).
   - **Frontend RBAC Navigation & Route Protection:** Updated `AuthContext.tsx` with `loginWithMicrosoft`, `hasRole`, `hasAnyRole`, automatic Bearer header propagation via `ApiClient`. Updated `Sidebar.tsx` to filter navigation links based on user roles, and `ProtectedRoute.tsx` to check `allowedRoles`.
-  - **Automated Test Suite:** Created `apps/server/test/auth.test.ts` with 15 automated Vitest test cases covering token validation, tenant rejection, domain rejection, expired tokens, unprovisioned accounts, inactive accounts, session JWT verification, RBAC permissions, and privilege escalation prevention.
-- **Pending Features:** None for Phase W2.
+  - **Automated Test Suite:** An earlier version of `apps/server/test/auth.test.ts` contained 15 Vitest cases. These historical tests do not establish live Entra registration, permission, consent, login, or synchronization status.
+- **Pending Features:** Tenant-side app registration, consent, Graph permissions, verified group IDs, production role mapping, and an approved mapping/provisioning path.
 - **Exact Files Changed / Added:**
   - `apps/admin/package.json`
   - `apps/admin/src/config/msalConfig.ts`
@@ -135,9 +137,9 @@ Status Legend:
   3. `npm run test -w apps/server`: Exit code 0 (15 of 15 tests passed in 122ms).
   4. `npm run build -w apps/admin`: Exit code 0 (`tsc -b && vite build` built production client in 334ms with 0 errors).
   5. `npm run db:migrate -w apps/server`: Applied migration 0008 to live PostgreSQL database.
-- **Actual Results:** All 15 automated test cases passed. Token validation, RBAC checks, tenant restrictions, and college domain enforcement verified. Builds and type checks pass.
-- **Known Defects & Security Risks Identified:** None. Finding 1 and Finding 2 resolved.
-- **External Configuration Blockers:** None for testing. Production uses Sona College `@sonatech.ac.in` Azure tenant.
+- **Historical Test Results:** Earlier unit-test runs are not evidence of successful live tenant login, Graph synchronization, or verified academic data. Production token validation does not use the email domain as identity proof.
+- **Known Blockers:** Login requires an existing linked account. Production staff roles are currently empty, and verified Entra groups for ADMIN/HOD/DEPUTY_HOD are not supported/configured. The local server Graph client secret is absent.
+- **External Configuration Blockers:** Tenant metadata, exposed scope/audience, Graph application permissions/admin consent, group object IDs, and server-side client credentials require owner/tenant-admin verification.
 - **Exact Next Action:** Proceed to Phase W3 — Academic Master Data.
 
 ---
@@ -471,7 +473,7 @@ Status Legend:
 | **Attendance Sessions** | `apps/server/src/routes/attendance.ts`<br>`apps/admin/src/pages/AttendancePage.tsx`<br>`apps/admin/src/pages/AttendanceSessionDetailsPage.tsx` | Session list & live attendance monitoring | Start, end, cancel, stats, live BLE endpoints; server-side principal enforced | `attendance_sessions` | Authenticated principal enforced; HOD/Staff RBAC | 13/13 tests pass in `attendance.test.ts` | **PASS** | Completed in Phase W8 |
 | **Attendance Records & Corrections** | `apps/server/src/routes/attendance.ts`<br>`apps/server/src/db/schema/attendance-records.ts`<br>`apps/admin/src/pages/AttendanceSessionDetailsPage.tsx` | Manual marking dialog & status correction modal | `/records`, `/records/:id`, `/corrections`, `/records/manual` with audit logging | `attendance_records`, `attendance_corrections` | Staff/HOD/Admin RBAC | 13/13 tests pass in `attendance.test.ts` | **PASS** | Completed in Phase W9 |
 | **Audit Logs** | `apps/server/src/routes/audit.ts`<br>`apps/server/src/services/audit.service.ts`<br>`apps/admin/src/pages/AuditLogsPage.tsx` | Search, filter, pagination, details modal | Querying with search/filter/date ranges; audit logging across academic, staff, subjects, timetable, overrides, attendance | `audit_logs` table exists | Admin/HOD middleware | Verified in test suites | **PASS** | Audit logging actively integrated across all modules |
-| **Dashboard** | `apps/server/src/routes/dashboard.ts`<br>`apps/admin/src/pages/DashboardPage.tsx` | Cards, Today's Timetable, Quick Actions, Recent Activity | Dedicated `/api/dashboard/stats`, `/today-timetable`, `/recent-activity`, and `/auth/sync-directory` | Connected to real PostgreSQL tables | Authenticated Staff/HOD/Admin | Real-time live data | **PASS** | Connected to live database queries: 240 students, 38 staff, 4 classes, 5 today sessions, live audit activity, Microsoft Directory Sync |
+| **Dashboard** | `apps/server/src/routes/dashboard.ts`<br>`apps/admin/src/pages/DashboardPage.tsx` | Cards, Today's Timetable, Quick Actions, Recent Activity | Dedicated `/api/dashboard/stats`, `/today-timetable`, `/recent-activity`, and `/auth/sync-directory` | Legacy application tables plus directory status | Authenticated Staff/HOD/Admin | Live application query; academic source unverified | **IMPLEMENTED — NOT VERIFIED** | Directory status is distinct from legacy student/staff/subject counts, timetable rows, attendance sessions, and application audit events; legacy values are not verified official data |
 | **Test Coverage & Quality** | Monorepo root, `apps/admin`, `apps/server` | Production client build passes in 240ms | 152 automated integration tests across 7 test suites | All DB schemas backed | Multi-role RBAC verified | 152/152 tests pass (1.54s) | **PASS** | Automated test harness configured and active across Phases W2 through W9 |
 
 ---

@@ -1,0 +1,2 @@
+ALTER TABLE "subjects"
+  ADD COLUMN "data_source" varchar(50) NOT NULL DEFAULT 'LEGACY_UNVERIFIED';

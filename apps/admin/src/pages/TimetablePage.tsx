@@ -58,6 +58,9 @@ export default function TimetablePage() {
       />
 
       <div className="card" style={{ padding: '24px', marginBottom: '24px' }}>
+        <div role="note" style={{ padding: '12px 16px', marginBottom: '20px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
+          Stored academic years, classes, period times, and timetable entries are legacy application data. Their provenance has not been verified against an authoritative schedule; do not treat them as current or official.
+        </div>
         <div className="timetable-filters" style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
           <div style={{ flex: 1 }}>
             <Select

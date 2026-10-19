@@ -82,6 +82,10 @@ export default function AttendancePage() {
         ]}
       />
 
+      <div role="note" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
+        These are stored application attendance records. Their academic source and provenance have not been verified; historical records are retained and are not presented as verified Entra data.
+      </div>
+
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px' }}>
           <Card title="Today's Sessions" subtitle="Total">

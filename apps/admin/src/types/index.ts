@@ -343,6 +343,7 @@ export interface Subject {
   regulationId: string;
   regulationName?: string;
   status: SubjectStatus;
+  dataSource: 'MANUALLY_ENTERED' | 'LEGACY_UNVERIFIED';
   createdAt: string;
   updatedAt: string;
 }

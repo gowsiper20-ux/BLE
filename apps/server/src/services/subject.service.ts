@@ -99,7 +99,42 @@ export class SubjectService {
 
     const existing = await this.repo.findByCode(cleanCode);
     if (existing) {
-      throw new Error(`Subject code '${cleanCode}' already exists.`);
+      if (existing.dataSource !== 'LEGACY_UNVERIFIED') {
+        throw new Error(`Subject code '${cleanCode}' already exists.`);
+      }
+
+      const references = await this.repo.getSubjectReferenceCounts(existing.id);
+      if (references.total > 0) {
+        throw new Error(
+          `Subject code '${cleanCode}' belongs to an unverified legacy row referenced by timetable/history data. It was preserved and cannot be overwritten; use a different code or review the record separately.`,
+        );
+      }
+
+      const result = await this.repo.update(existing.id, {
+        code: cleanCode,
+        name: cleanName,
+        description: data.description?.trim() || null,
+        subjectType,
+        yearNumber,
+        regulationId: data.regulationId,
+        status: data.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+        dataSource: 'MANUALLY_ENTERED',
+      });
+
+      await this.audit.log({
+        actorId: actor?.actorId,
+        actorName: actor?.actorName,
+        actorRole: actor?.actorRole,
+        action: 'VERIFY_SUBJECT',
+        entityType: 'SUBJECT',
+        entityId: result.id,
+        description: `Re-entered unreferenced legacy subject '${result.code} - ${result.name}' as manual data`,
+        oldValues: existing,
+        newValues: result,
+        ipAddress: actor?.ipAddress,
+        userAgent: actor?.userAgent,
+      });
+      return result;
     }
 
     const payload = {
@@ -110,6 +145,7 @@ export class SubjectService {
       yearNumber,
       regulationId: data.regulationId,
       status: data.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+      dataSource: 'MANUALLY_ENTERED' as const,
     };
 
     const result = await this.repo.create(payload);
@@ -133,6 +169,9 @@ export class SubjectService {
   async updateSubject(id: string, data: any, actor?: AuditActor) {
     const subject = await this.repo.findById(id);
     if (!subject) throw new Error("Subject not found.");
+    if (subject.dataSource !== 'MANUALLY_ENTERED') {
+      throw new Error("Legacy unverified subjects cannot be edited because they may be referenced by historical timetable or attendance data.");
+    }
 
     const updatePayload: any = {};
 
@@ -200,6 +239,9 @@ export class SubjectService {
   async updateSubjectStatus(id: string, status: 'ACTIVE' | 'INACTIVE', actor?: AuditActor) {
     const subject = await this.repo.findById(id);
     if (!subject) throw new Error("Subject not found.");
+    if (subject.dataSource !== 'MANUALLY_ENTERED') {
+      throw new Error("Legacy unverified subjects cannot be changed or deleted.");
+    }
 
     if (status !== 'ACTIVE' && status !== 'INACTIVE') {
       throw new Error("Status must be ACTIVE or INACTIVE.");
@@ -227,6 +269,9 @@ export class SubjectService {
   async deleteSubject(id: string, actor?: AuditActor) {
     const subject = await this.repo.findById(id);
     if (!subject) throw new Error("Subject not found.");
+    if (subject.dataSource !== 'MANUALLY_ENTERED') {
+      throw new Error("Legacy unverified subjects cannot be changed or deleted.");
+    }
     
     const counts = await this.repo.getSubjectReferenceCounts(id);
     if (counts.total > 0) {

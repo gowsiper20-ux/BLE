@@ -195,6 +195,10 @@ export default function AttendanceSessionDetailsPage() {
         }
       />
 
+      <div role="note" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
+        Session, roster, timetable, and attendance values are stored application records; their source has not been verified against an authoritative academic system.
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         <Card title="Session Information">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

@@ -12,7 +12,8 @@ interface DirectoryStatus {
   configured: boolean;
   totalSynchronizedUsers: number;
   verifiedItFacultyStaffIdentities: number;
-  verifiedGroupClassifications: boolean;
+  staffGroupIdsConfigured: boolean;
+  membershipMode: string | null;
   lastSuccessfulFullSync: string | null;
   latestAttempt: { status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' } | null;
 }
@@ -76,11 +77,13 @@ export default function StaffPage() {
     },
   ];
 
-  const emptyMessage = !status?.configured
-    ? 'Microsoft Graph synchronization is not configured.'
+  const emptyMessage = !status
+    ? 'Directory synchronization status is unavailable.'
+    : !status.configured
+      ? 'Microsoft Graph synchronization is not configured.'
     : !status.lastSuccessfulFullSync
       ? 'No successful full directory synchronization has completed.'
-      : !status.verifiedGroupClassifications
+      : !status.staffGroupIdsConfigured || !status.membershipMode
         ? 'Verified IT faculty/staff group IDs and approved membership semantics are not configured.'
         : 'No verified IT faculty/staff identities match these filters.';
 
@@ -98,7 +101,9 @@ export default function StaffPage() {
       </div>
       {status && (
         <div role="status" style={{ padding: '12px 16px', borderRadius: 6, background: '#F1F6FC', color: '#1E3A8A' }}>
-          Synchronized tenant users: {status.totalSynchronizedUsers} · Verified IT faculty/staff: {status.verifiedItFacultyStaffIdentities} · Last successful full sync: {status.lastSuccessfulFullSync ? new Date(status.lastSuccessfulFullSync).toLocaleString() : 'Never'}
+          {status.lastSuccessfulFullSync
+            ? <>Synchronized tenant users: {status.totalSynchronizedUsers} · Verified IT faculty/staff: {status.staffGroupIdsConfigured && status.membershipMode ? status.verifiedItFacultyStaffIdentities : 'Unavailable — group classification not configured'} · Last successful full sync: {new Date(status.lastSuccessfulFullSync).toLocaleString()}</>
+            : 'No successful full Entra sync is available; directory counts are unavailable, not zero.'}
           {' · Latest attempt: '}{status.latestAttempt?.status || 'None'}
         </div>
       )}
@@ -159,7 +164,9 @@ export default function StaffPage() {
           onPageChange={setPage}
         />
         <div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Verified directory faculty/staff: {total} · page size {PAGE_SIZE}
+          {status?.lastSuccessfulFullSync && status.staffGroupIdsConfigured && status.membershipMode
+            ? <>Verified directory faculty/staff: {total} · page size {PAGE_SIZE}</>
+            : 'Verified directory faculty/staff count unavailable until a successful full sync and verified staff-group configuration.'}
         </div>
       </div>
     </div>

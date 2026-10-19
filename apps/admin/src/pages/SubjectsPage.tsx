@@ -117,6 +117,15 @@ export default function SubjectsPage() {
     { key: 'code', label: 'Code', sortable: true },
     { key: 'name', label: 'Subject Name', sortable: true },
     {
+      key: 'dataSource',
+      label: 'Entry Source',
+      render: (value: unknown) => (
+        <Badge variant="warning">
+          {value === 'MANUALLY_ENTERED' ? 'Manual entry' : 'Legacy — unverified'}
+        </Badge>
+      ),
+    },
+    {
       key: 'subjectType',
       label: 'Type',
       render: (val: any) => {
@@ -174,6 +183,10 @@ export default function SubjectsPage() {
           </Button>
         }
       />
+
+      <div role="note" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
+        Existing legacy subject rows are retained for historical references but are hidden until re-entered as manual data. Add subjects using values confirmed by your college; manual entry is not represented as an Entra or official-system verification.
+      </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', backgroundColor: 'var(--bg-surface)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
         <div style={{ flex: 1, minWidth: '250px' }}>
@@ -237,7 +250,7 @@ export default function SubjectsPage() {
           keyField="id"
           actions={actions}
           loading={loading}
-          emptyMessage="No subjects found matching your criteria"
+          emptyMessage="No manually entered subjects match these filters. Use Add Subject to enter college-provided subject details."
           page={page}
           pageSize={20}
           total={total}
