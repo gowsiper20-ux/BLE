@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { isMsalConfigured } from '../config/msalConfig';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../services/api';
 import './LoginPage.css';
 
 interface LoginLocationState {
@@ -9,28 +9,55 @@ interface LoginLocationState {
 }
 
 export default function LoginPage() {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [signupEnabled, setSignupEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
-  const { loginWithMicrosoft, isAuthenticated } = useAuth();
+  const { login, signup, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    let active = true;
+    void api.get<{ enabled: boolean }>('/api/auth/signup-status')
+      .then((response) => {
+        if (active) setSignupEnabled(response.enabled);
+      })
+      .catch(() => {
+        if (active) setSignupEnabled(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
-      const from = (location.state as LoginLocationState | null)?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+      const requested = (location.state as LoginLocationState | null)?.from?.pathname;
+      navigate(requested || '/dashboard', { replace: true });
     }
   }, [isAuthenticated, location, navigate]);
 
-  const handleMicrosoftLogin = async () => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError('');
+    if (isSignUp && password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
     setLoading(true);
-    const result = await loginWithMicrosoft();
+    const result = isSignUp
+      ? await signup(name, email, password)
+      : await login(email, password);
     if (result.success) {
-      const from = (location.state as LoginLocationState | null)?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+      navigate((location.state as LoginLocationState | null)?.from?.pathname || '/dashboard', { replace: true });
     } else {
-      setError(result.error || 'Microsoft authentication failed.');
+      setError(result.error || 'Invalid email or password.');
     }
     setLoading(false);
   };
@@ -44,38 +71,112 @@ export default function LoginPage() {
           <div className="login-card__brand">
             <img src="/assets/sona-logo.png?v=4" alt="SONA College of Technology" className="login-card__logo" />
             <h1 className="login-card__title">SONA SMART ATTENDANCE</h1>
-            <h2 className="login-card__subtitle">Admin Portal</h2>
-            <p className="login-card__desc">Sign in with your authorized Microsoft Entra account.</p>
+            <h2 className="login-card__subtitle">HOD &amp; Faculty Portal</h2>
+            <p className="login-card__desc">
+              {isSignUp ? 'Create a faculty account.' : 'Sign in with your staff or HOD account.'}
+            </p>
           </div>
 
           {error && <div className="login-error" role="alert" aria-live="polite">{error}</div>}
-          {!isMsalConfigured() && (
-            <div className="login-error" role="alert">
-              Microsoft sign-in is not configured. Set VITE_MSAL_TENANT_ID, VITE_MSAL_CLIENT_ID,
-              VITE_MSAL_API_SCOPE, and VITE_MSAL_REDIRECT_URI for the registered SPA.
+          <form className="login-form" onSubmit={handleSubmit}>
+            {isSignUp && (
+              <div className="form-group">
+                <label htmlFor="admin-name">Full name</label>
+                <div className="input-with-icon">
+                  <input
+                    id="admin-name"
+                    type="text"
+                    name="name"
+                    autoComplete="name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    maxLength={255}
+                    minLength={2}
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="form-group">
+              <label htmlFor="admin-email">Email address</label>
+              <div className="input-with-icon">
+                <input
+                  id="admin-email"
+                  type="email"
+                  name="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  maxLength={254}
+                  required
+                  disabled={loading}
+                />
+              </div>
             </div>
+            <div className="form-group">
+              <label htmlFor="admin-password">Password</label>
+              <div className="input-with-icon">
+                <input
+                  id="admin-password"
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  maxLength={72}
+                  minLength={isSignUp ? 12 : undefined}
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  disabled={loading}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+            {isSignUp && (
+              <div className="form-group">
+                <label htmlFor="admin-confirm-password">Confirm password</label>
+                <div className="input-with-icon">
+                  <input
+                    id="admin-confirm-password"
+                    type="password"
+                    name="confirm-password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    maxLength={72}
+                    minLength={12}
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+            )}
+            <button type="submit" className="login-button" disabled={loading} aria-busy={loading}>
+              {loading ? (isSignUp ? 'Creating account…' : 'Signing in…') : (isSignUp ? 'Sign Up' : 'Sign In')}
+            </button>
+          </form>
+          {signupEnabled && (
+            <button
+              type="button"
+              className="login-signup-toggle"
+              onClick={() => {
+                setIsSignUp((current) => !current);
+                setError('');
+              }}
+              disabled={loading}
+            >
+              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+            </button>
           )}
-          <button
-            type="button"
-            className="microsoft-btn"
-            onClick={handleMicrosoftLogin}
-            disabled={loading || !isMsalConfigured()}
-            aria-busy={loading}
-          >
-            <svg className="microsoft-icon-svg" viewBox="0 0 21 21" aria-hidden="true">
-              <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-              <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-              <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-              <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-            </svg>
-            <span>{loading ? 'Connecting to Microsoft…' : 'Sign in with Microsoft'}</span>
-          </button>
-          <div className="login-access">
-            <p className="login-access__message">
-              Access is granted only to accounts explicitly provisioned for this application.
-              Contact your institution administrator if your account is not mapped.
-            </p>
-          </div>
         </div>
       </div>
       <footer className="login-footer">

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { ClassSubjectService } from "../services/class-subject.service";
-import { requireHodOrAdmin, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const classSubjectRoutes = new Hono();
@@ -9,7 +9,7 @@ const service = new ClassSubjectService();
 function getActorFromContext(c: any) {
   const user = c.get('user') as AuthPrincipal | undefined;
   return {
-    actorId: user?.id,
+    actorId: user?.roles?.includes('FACULTY') ? undefined : user?.id,
     actorName: user?.name || user?.collegeEmail || 'System User',
     actorRole: user?.roles?.[0] || 'ADMIN',
     ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1',
@@ -46,7 +46,7 @@ function handleClassSubjectError(c: any, error: any) {
   return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: msg } }, 500);
 }
 
-classSubjectRoutes.get("/", requireStaffOrAdmin, async (c) => {
+classSubjectRoutes.get("/", requireSharedDashboardRead, async (c) => {
   try {
     const classId = c.req.query("classId");
     const subjectId = c.req.query("subjectId");
@@ -67,7 +67,7 @@ classSubjectRoutes.get("/", requireStaffOrAdmin, async (c) => {
   }
 });
 
-classSubjectRoutes.post("/", requireHodOrAdmin, async (c) => {
+classSubjectRoutes.post("/", requireSharedModuleAccess, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -78,7 +78,7 @@ classSubjectRoutes.post("/", requireHodOrAdmin, async (c) => {
   }
 });
 
-classSubjectRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
+classSubjectRoutes.patch("/:id/status", requireSharedModuleAccess, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -89,7 +89,7 @@ classSubjectRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
   }
 });
 
-classSubjectRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
+classSubjectRoutes.delete("/:id", requireSharedModuleAccess, async (c) => {
   try {
     const actor = getActorFromContext(c);
     await service.removeAssignment(c.req.param("id")!, actor);

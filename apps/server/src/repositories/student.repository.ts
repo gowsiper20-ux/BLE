@@ -58,7 +58,6 @@ export class StudentRepository {
         registerNumber: students.registerNumber,
         name: students.name,
         collegeEmail: students.collegeEmail,
-        microsoftUserId: students.microsoftUserId,
         status: students.status,
         className: classes.name,
         classId: classes.id,
@@ -105,7 +104,6 @@ export class StudentRepository {
       registerNumber: students.registerNumber,
       name: students.name,
       collegeEmail: students.collegeEmail,
-      microsoftUserId: students.microsoftUserId,
       status: students.status,
       className: classes.name,
       classId: classes.id,
@@ -197,6 +195,21 @@ export class StudentRepository {
   async bulkCreateStudents(studentsData: (typeof students.$inferInsert)[]) {
     return db.transaction(async (tx) => {
       return tx.insert(students).values(studentsData).returning();
+    });
+  }
+
+  async bulkCreateStudentsWithConflicts(studentsData: (typeof students.$inferInsert)[]) {
+    return db.transaction(async (tx) => {
+      const created: Array<{ index: number; id: string }> = [];
+      for (const [index, student] of studentsData.entries()) {
+        const [row] = await tx
+          .insert(students)
+          .values(student)
+          .onConflictDoNothing()
+          .returning({ id: students.id });
+        if (row) created.push({ index, id: row.id });
+      }
+      return created;
     });
   }
 

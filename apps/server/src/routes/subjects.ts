@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { SubjectService } from "../services/subject.service";
 import { ClassSubjectService } from "../services/class-subject.service";
-import { requireHodOrAdmin, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const subjectRoutes = new Hono();
@@ -11,7 +11,7 @@ const classSubjectService = new ClassSubjectService();
 function getActorFromContext(c: any) {
   const user = c.get('user') as AuthPrincipal | undefined;
   return {
-    actorId: user?.id,
+    actorId: user?.roles?.includes('FACULTY') ? undefined : user?.id,
     actorName: user?.name || user?.collegeEmail || 'System User',
     actorRole: user?.roles?.[0] || 'ADMIN',
     ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1',
@@ -49,7 +49,7 @@ function handleSubjectError(c: any, error: any) {
   return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: msg } }, 500);
 }
 
-subjectRoutes.get("/", requireStaffOrAdmin, async (c) => {
+subjectRoutes.get("/", requireSharedDashboardRead, async (c) => {
   try {
     const search = c.req.query("search");
     const type = c.req.query("type");
@@ -66,7 +66,7 @@ subjectRoutes.get("/", requireStaffOrAdmin, async (c) => {
   }
 });
 
-subjectRoutes.get("/stats", requireStaffOrAdmin, async (c) => {
+subjectRoutes.get("/stats", requireSharedDashboardRead, async (c) => {
   try {
     const data = await service.getSubjects({ limit: 10000 });
     const total = data.pagination.total;
@@ -80,7 +80,7 @@ subjectRoutes.get("/stats", requireStaffOrAdmin, async (c) => {
   }
 });
 
-subjectRoutes.get("/:id", requireStaffOrAdmin, async (c) => {
+subjectRoutes.get("/:id", requireSharedDashboardRead, async (c) => {
   try {
     const data = await service.getSubjectById(c.req.param("id")!);
     if (!data) return c.json({ success: false, error: { code: 'NOT_FOUND', message: "Subject not found." } }, 404);
@@ -90,7 +90,7 @@ subjectRoutes.get("/:id", requireStaffOrAdmin, async (c) => {
   }
 });
 
-subjectRoutes.post("/", requireHodOrAdmin, async (c) => {
+subjectRoutes.post("/", requireSharedModuleAccess, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -101,7 +101,7 @@ subjectRoutes.post("/", requireHodOrAdmin, async (c) => {
   }
 });
 
-subjectRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
+subjectRoutes.patch("/:id", requireSharedModuleAccess, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -112,7 +112,7 @@ subjectRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
   }
 });
 
-subjectRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
+subjectRoutes.patch("/:id/status", requireSharedModuleAccess, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -123,7 +123,7 @@ subjectRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
   }
 });
 
-subjectRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
+subjectRoutes.delete("/:id", requireSharedModuleAccess, async (c) => {
   try {
     const actor = getActorFromContext(c);
     await service.deleteSubject(c.req.param("id")!, actor);
@@ -134,7 +134,7 @@ subjectRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
 });
 
 // Assigned classes
-subjectRoutes.get("/:id/classes", requireStaffOrAdmin, async (c) => {
+subjectRoutes.get("/:id/classes", requireSharedDashboardRead, async (c) => {
   try {
     const data = await classSubjectService.getClassesBySubject(c.req.param("id")!);
     return c.json({ success: true, data });

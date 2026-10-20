@@ -1,14 +1,15 @@
 import { Hono } from 'hono';
 import { AttendanceSessionService } from '../services/attendance-session.service';
 import { AttendanceRecordService } from '../services/attendance-record.service';
-import { requireStaffOrAdmin } from '../middlewares/auth.middleware';
+import { requireLinkedAttendanceStaff, requireStaffOrAdmin } from '../middlewares/auth.middleware';
 import type { AuthPrincipal } from '@smart-attendance/shared';
+import { getDateInTimeZone } from '../utils/date';
 
 export const attendanceRoutes = new Hono();
 const service = new AttendanceSessionService();
 const recordService = new AttendanceRecordService();
 
-attendanceRoutes.post('/sessions/start', requireStaffOrAdmin, async (c) => {
+attendanceRoutes.post('/sessions/start', requireStaffOrAdmin, requireLinkedAttendanceStaff, async (c) => {
   try {
     const user = c.get('user') as AuthPrincipal;
     const body = await c.req.json();
@@ -23,7 +24,7 @@ attendanceRoutes.post('/sessions/start', requireStaffOrAdmin, async (c) => {
     }
 
     const actor = {
-      actorId: user.id,
+      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
       actorName: user.name,
       actorRole: user.roles[0] || 'STAFF',
       ipAddress: c.req.header('x-forwarded-for') || undefined,
@@ -40,12 +41,12 @@ attendanceRoutes.post('/sessions/start', requireStaffOrAdmin, async (c) => {
   }
 });
 
-attendanceRoutes.post('/sessions/:id/end', requireStaffOrAdmin, async (c) => {
+attendanceRoutes.post('/sessions/:id/end', requireStaffOrAdmin, requireLinkedAttendanceStaff, async (c) => {
   try {
     const user = c.get('user') as AuthPrincipal;
     const { id } = c.req.param();
     const actor = {
-      actorId: user.id,
+      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
       actorName: user.name,
       actorRole: user.roles[0] || 'STAFF',
       ipAddress: c.req.header('x-forwarded-for') || undefined,
@@ -58,13 +59,13 @@ attendanceRoutes.post('/sessions/:id/end', requireStaffOrAdmin, async (c) => {
   }
 });
 
-attendanceRoutes.post('/sessions/:id/cancel', requireStaffOrAdmin, async (c) => {
+attendanceRoutes.post('/sessions/:id/cancel', requireStaffOrAdmin, requireLinkedAttendanceStaff, async (c) => {
   try {
     const user = c.get('user') as AuthPrincipal;
     const { id } = c.req.param();
     const body = await c.req.json();
     const actor = {
-      actorId: user.id,
+      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
       actorName: user.name,
       actorRole: user.roles[0] || 'STAFF',
       ipAddress: c.req.header('x-forwarded-for') || undefined,
@@ -77,7 +78,7 @@ attendanceRoutes.post('/sessions/:id/cancel', requireStaffOrAdmin, async (c) => 
   }
 });
 
-attendanceRoutes.get('/sessions', async (c) => {
+attendanceRoutes.get('/sessions', requireStaffOrAdmin, async (c) => {
   try {
     const query = c.req.query();
     const sessions = await service.getSessions(query);
@@ -87,9 +88,9 @@ attendanceRoutes.get('/sessions', async (c) => {
   }
 });
 
-attendanceRoutes.get('/sessions/stats', async (c) => {
+attendanceRoutes.get('/sessions/stats', requireStaffOrAdmin, async (c) => {
   try {
-    const date = c.req.query('date') || new Date().toISOString().split('T')[0];
+    const date = c.req.query('date') || getDateInTimeZone();
     const stats = await service.getStats(date);
     return c.json({ success: true, data: stats });
   } catch (error: any) {
@@ -97,7 +98,7 @@ attendanceRoutes.get('/sessions/stats', async (c) => {
   }
 });
 
-attendanceRoutes.get('/sessions/:id', async (c) => {
+attendanceRoutes.get('/sessions/:id', requireStaffOrAdmin, async (c) => {
   try {
     const { id } = c.req.param();
     const session = await service.getSession(id);
@@ -111,7 +112,7 @@ attendanceRoutes.get('/sessions/:id', async (c) => {
 import { BleAttendanceService } from '../services/ble-attendance.service';
 const bleService = new BleAttendanceService();
 
-attendanceRoutes.post('/sessions/:id/ble/start', async (c) => {
+attendanceRoutes.post('/sessions/:id/ble/start', requireStaffOrAdmin, requireLinkedAttendanceStaff, async (c) => {
   try {
     const { id } = c.req.param();
     const result = await bleService.startBleSession(id);
@@ -121,7 +122,7 @@ attendanceRoutes.post('/sessions/:id/ble/start', async (c) => {
   }
 });
 
-attendanceRoutes.post('/sessions/:id/ble/stop', async (c) => {
+attendanceRoutes.post('/sessions/:id/ble/stop', requireStaffOrAdmin, requireLinkedAttendanceStaff, async (c) => {
   try {
     const { id } = c.req.param();
     const result = await bleService.stopBleSession(id);
@@ -131,7 +132,7 @@ attendanceRoutes.post('/sessions/:id/ble/stop', async (c) => {
   }
 });
 
-attendanceRoutes.post('/sessions/:id/ble/detections', async (c) => {
+attendanceRoutes.post('/sessions/:id/ble/detections', requireStaffOrAdmin, requireLinkedAttendanceStaff, async (c) => {
   try {
     const { id } = c.req.param();
     const body = await c.req.json();
@@ -145,7 +146,7 @@ attendanceRoutes.post('/sessions/:id/ble/detections', async (c) => {
   }
 });
 
-attendanceRoutes.get('/sessions/:id/live', async (c) => {
+attendanceRoutes.get('/sessions/:id/live', requireStaffOrAdmin, async (c) => {
   try {
     const { id } = c.req.param();
     const data = await bleService.getLiveAttendance(id);
@@ -183,14 +184,14 @@ attendanceRoutes.get("/records/:id", requireStaffOrAdmin, async (c) => {
 });
 
 // POST /api/attendance/corrections
-attendanceRoutes.post("/corrections", requireStaffOrAdmin, async (c) => {
+attendanceRoutes.post("/corrections", requireStaffOrAdmin, requireLinkedAttendanceStaff, async (c) => {
   try {
     const user = c.get("user") as AuthPrincipal;
     const body = await c.req.json();
     const { recordId, newStatus, reason } = body;
 
     const actor = {
-      actorId: user.id,
+      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
       actorName: user.name,
       actorRole: user.roles[0] || "STAFF",
       ipAddress: c.req.header("x-forwarded-for") || undefined,
@@ -211,14 +212,14 @@ attendanceRoutes.post("/corrections", requireStaffOrAdmin, async (c) => {
 });
 
 // POST /api/attendance/records/manual
-attendanceRoutes.post("/records/manual", requireStaffOrAdmin, async (c) => {
+attendanceRoutes.post("/records/manual", requireStaffOrAdmin, requireLinkedAttendanceStaff, async (c) => {
   try {
     const user = c.get("user") as AuthPrincipal;
     const body = await c.req.json();
     const { sessionId, studentId, status, reason } = body;
 
     const actor = {
-      actorId: user.id,
+      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
       actorName: user.name,
       actorRole: user.roles[0] || "STAFF",
       ipAddress: c.req.header("x-forwarded-for") || undefined,

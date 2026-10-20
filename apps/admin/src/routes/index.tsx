@@ -9,6 +9,7 @@ import RegulationsPage from '../pages/RegulationsPage';
 import ClassesPage from '../pages/ClassesPage';
 import StudentsPage from '../pages/StudentsPage';
 import StaffPage from '../pages/StaffPage';
+import StaffDetailsPage from '../pages/StaffDetailsPage';
 import CounselorsPage from '../pages/CounselorsPage';
 import SubjectsPage from '../pages/SubjectsPage';
 import SubjectDetailsPage from '../pages/SubjectDetailsPage';
@@ -28,7 +29,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/',
-    element: <ProtectedRoute />,
+    element: <ProtectedRoute allowedRoles={['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF', 'FACULTY']} />,
     children: [
       {
         path: '/',
@@ -43,18 +44,30 @@ export const router = createBrowserRouter([
       { path: 'classes/:id', element: <Navigate to="/classes" replace /> },
       { path: 'students', element: <StudentsPage /> },
       { path: 'staff', element: <StaffPage /> },
-      { path: 'staff/:id', element: <Navigate to="/staff" replace /> },
+      { path: 'staff/:id', element: <StaffDetailsPage /> },
       { path: 'class-counselors', element: <CounselorsPage /> },
       { path: 'subjects', element: <SubjectsPage /> },
       { path: 'subjects/:id', element: <SubjectDetailsPage /> },
       { path: 'timetable', element: <TimetablePage /> },
       { path: 'timetable/overrides', element: <OverridesPage /> },
-      { path: 'periods', element: <PeriodsPage /> },
+      {
+        path: 'periods',
+        element: <ProtectedRoute allowedRoles={['ADMIN']} />,
+        children: [{ index: true, element: <PeriodsPage /> }],
+      },
       { path: 'staff/:id/timetable', element: <StaffTimetablePage /> },
       { path: 'attendance', element: <AttendancePage /> },
       { path: 'attendance/sessions/:id', element: <AttendanceSessionDetailsPage /> },
-      { path: 'audit-logs', element: <AuditLogsPage /> },
-      { path: 'settings', element: <SettingsPage /> },
+      {
+        path: 'audit-logs',
+        element: <ProtectedRoute allowedRoles={['ADMIN', 'HOD', 'DEPUTY_HOD']} />,
+        children: [{ index: true, element: <AuditLogsPage /> }],
+      },
+      {
+        path: 'settings',
+        element: <ProtectedRoute allowedRoles={['ADMIN']} />,
+        children: [{ index: true, element: <SettingsPage /> }],
+      },
         ],
       }
     ],

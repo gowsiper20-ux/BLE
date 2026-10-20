@@ -1,9 +1,12 @@
 import { Hono } from "hono";
 import { StudentService } from "../services/student.service";
 import { AttendanceSessionService } from "../services/attendance-session.service";
-import { requireStudentAuth, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireSharedModuleAccess, requireStudentAuth, requireStaffOrAdmin } from "../middlewares/auth.middleware";
 import { BleTokenService } from "../services/ble-token.service";
 import { StudentBleDeviceRepository } from '../repositories/student-ble-device.repository';
+import type { students } from '../db/schema/students';
+import { TabularImportError } from '../services/tabular-import';
+import { getDateInTimeZone } from '../utils/date';
 
 export const studentRoutes = new Hono<{ Variables: { student: any } }>();
 const service = new StudentService();
@@ -11,20 +14,17 @@ const attendanceService = new AttendanceSessionService();
 const bleTokenService = new BleTokenService();
 const deviceRepo = new StudentBleDeviceRepository();
 
-studentRoutes.use("*", async (c, next) => {
-  const directoryMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method);
-  const operationalDeviceRoute = c.req.path.includes("/ble-devices");
-  if (directoryMutation && !operationalDeviceRoute) {
-    return c.json({
-      success: false,
-      error: { code: "DIRECTORY_READ_ONLY", message: "Student directory identities are read-only and managed by synchronization." },
-    }, 405);
-  }
-  await next();
-});
-
 function handleStudentError(c: any, error: any) {
   const msg = error?.message || 'An unexpected error occurred.';
+  if (error instanceof TabularImportError) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: msg } }, 400);
+  }
+  if (error?.code === '23505') {
+    return c.json({ success: false, error: { code: 'CONFLICT', message: 'A student with this register number or email already exists.' } }, 409);
+  }
+  if (error?.code === '23503') {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'The selected class is no longer available.' } }, 400);
+  }
   if (
     msg.includes('already exists') ||
     msg.includes('Cannot delete') ||
@@ -42,14 +42,142 @@ function handleStudentError(c: any, error: any) {
     msg.includes('characters') ||
     msg.includes('Unsupported') ||
     msg.includes('empty') ||
+    msg.includes('active or does not exist') ||
     msg.includes('errors') ||
     msg.includes('Cannot import') ||
     msg.includes('No data provided')
   ) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: msg } }, 400);
   }
-  return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: msg } }, 500);
+  return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Unable to complete the student request. Please retry.' } }, 500);
 }
+
+function getActor(c: any) {
+  const user = c.get('user');
+  return {
+    actorId: user?.roles.includes('FACULTY') ? undefined : user?.id,
+    actorName: user?.name,
+    actorRole: user?.roles?.[0],
+    ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim(),
+    userAgent: c.req.header('user-agent'),
+  };
+}
+
+async function getImportFile(c: any): Promise<{ file: File; buffer: Buffer } | Response> {
+  const contentLength = Number(c.req.header('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > 5 * 1024 * 1024 + 64 * 1024) {
+    return c.json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Import files are limited to 5 MB.' } }, 413);
+  }
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Choose a CSV or XLSX file.' } }, 400);
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return c.json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Import files are limited to 5 MB.' } }, 413);
+  }
+  const extension = file.name.toLowerCase().split('.').pop();
+  const allowedTypes = extension === 'csv'
+    ? ['text/csv', 'application/vnd.ms-excel', 'application/octet-stream', '']
+    : extension === 'xlsx'
+      ? ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream', '']
+      : [];
+  if (!allowedTypes.includes(file.type.toLowerCase())) {
+    return c.json({ success: false, error: { code: 'UNSUPPORTED_FILE', message: 'Upload a valid .csv or .xlsx file.' } }, 400);
+  }
+  return { file, buffer: Buffer.from(await file.arrayBuffer()) };
+}
+
+studentRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="student-import-template.csv"');
+  return c.body('register_number,name,college_email,class_id\r\n');
+});
+
+studentRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
+  try {
+    const upload = await getImportFile(c);
+    if (upload instanceof Response) return upload;
+    const data = await service.validateImportFile(upload.buffer, upload.file.name, upload.file.type);
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStudentError(c, error);
+  }
+});
+
+studentRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
+  try {
+    const upload = await getImportFile(c);
+    if (upload instanceof Response) return upload;
+    const data = await service.confirmImport(upload.buffer, upload.file.name, upload.file.type, getActor(c));
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStudentError(c, error);
+  }
+});
+
+studentRoutes.post('/', requireSharedModuleAccess, async (c) => {
+  try {
+    const body = await c.req.json() as Record<string, unknown>;
+    if (
+      typeof body.registerNumber !== 'string' ||
+      typeof body.name !== 'string' ||
+      typeof body.collegeEmail !== 'string' ||
+      typeof body.classId !== 'string'
+    ) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Register number, name, college email, and class are required.' } }, 400);
+    }
+    const student = await service.createStudent({
+      registerNumber: body.registerNumber,
+      name: body.name,
+      collegeEmail: body.collegeEmail,
+      classId: body.classId,
+      status: 'ACTIVE',
+    }, getActor(c));
+    return c.json({ success: true, data: student }, 201);
+  } catch (error: unknown) {
+    return handleStudentError(c, error);
+  }
+});
+
+studentRoutes.put('/:id', requireSharedModuleAccess, async (c) => {
+  try {
+    const body = await c.req.json() as Record<string, unknown>;
+    const update: Partial<typeof students.$inferInsert> = {};
+    for (const field of ['registerNumber', 'name', 'collegeEmail', 'classId'] as const) {
+      if (body[field] !== undefined) {
+        if (typeof body[field] !== 'string') {
+          return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `${field} must be a string.` } }, 400);
+        }
+        update[field] = body[field];
+      }
+    }
+    if (!Object.keys(update).length) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Provide at least one permitted field to update.' } }, 400);
+    }
+    const data = await service.updateStudent(c.req.param('id')!, update, getActor(c));
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStudentError(c, error);
+  }
+});
+
+studentRoutes.patch('/:id/status', requireSharedModuleAccess, async (c) => {
+  try {
+    const body = await c.req.json() as { status?: string };
+    if (!['ACTIVE', 'INACTIVE', 'GRADUATED', 'SUSPENDED'].includes(body.status || '')) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Choose a supported student status.' } }, 400);
+    }
+    const data = await service.updateStudentStatus(
+      c.req.param('id')!,
+      body.status as 'ACTIVE' | 'INACTIVE' | 'GRADUATED' | 'SUSPENDED',
+      getActor(c),
+    );
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStudentError(c, error);
+  }
+});
 
 studentRoutes.get("/", requireStaffOrAdmin, async (c) => {
   try {
@@ -88,7 +216,7 @@ studentRoutes.get("/me/attendance/current", requireStudentAuth, async (c) => {
       return c.json({ success: true, session: null });
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getDateInTimeZone();
     
     const activeSessions = await attendanceService.getSessions({
       classId: student.classId,
@@ -114,7 +242,7 @@ studentRoutes.get("/me/attendance/ble-token", requireStudentAuth, async (c) => {
       return c.json({ success: true, token: null });
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getDateInTimeZone();
     
     const activeSessions = await attendanceService.getSessions({
       classId: student.classId,
@@ -137,9 +265,10 @@ studentRoutes.get("/me/attendance/ble-token", requireStudentAuth, async (c) => {
 
 // --- BLE Devices Endpoints ---
 
-studentRoutes.get('/:studentId/ble-devices', async (c) => {
+studentRoutes.get('/:studentId/ble-devices', requireStudentAuth, async (c) => {
   try {
     const { studentId } = c.req.param();
+    if (c.get('user').id !== studentId) return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'You may only view your own devices.' } }, 403);
     const devices = await deviceRepo.findByStudentId(studentId);
     return c.json({ success: true, data: devices });
   } catch (error: any) {
@@ -147,9 +276,10 @@ studentRoutes.get('/:studentId/ble-devices', async (c) => {
   }
 });
 
-studentRoutes.post('/:studentId/ble-devices', async (c) => {
+studentRoutes.post('/:studentId/ble-devices', requireStudentAuth, async (c) => {
   try {
     const { studentId } = c.req.param();
+    if (c.get('user').id !== studentId) return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'You may only manage your own devices.' } }, 403);
     const body = await c.req.json();
     const device = await deviceRepo.create({
       studentId,
@@ -163,9 +293,10 @@ studentRoutes.post('/:studentId/ble-devices', async (c) => {
   }
 });
 
-studentRoutes.patch('/:studentId/ble-devices/:deviceId', async (c) => {
+studentRoutes.patch('/:studentId/ble-devices/:deviceId', requireStudentAuth, async (c) => {
   try {
-    const { deviceId } = c.req.param();
+    const { studentId, deviceId } = c.req.param();
+    if (c.get('user').id !== studentId) return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'You may only manage your own devices.' } }, 403);
     const body = await c.req.json();
     const device = await deviceRepo.update(deviceId, body);
     return c.json({ success: true, data: device });
@@ -174,9 +305,10 @@ studentRoutes.patch('/:studentId/ble-devices/:deviceId', async (c) => {
   }
 });
 
-studentRoutes.delete('/:studentId/ble-devices/:deviceId', async (c) => {
+studentRoutes.delete('/:studentId/ble-devices/:deviceId', requireStudentAuth, async (c) => {
   try {
-    const { deviceId } = c.req.param();
+    const { studentId, deviceId } = c.req.param();
+    if (c.get('user').id !== studentId) return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'You may only manage your own devices.' } }, 403);
     await deviceRepo.delete(deviceId);
     return c.json({ success: true, data: null });
   } catch (error: any) {

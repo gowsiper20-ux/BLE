@@ -3,7 +3,7 @@
 // ============================================
 
 // --- Roles ---
-export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF' | 'STUDENT';
+export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF' | 'FACULTY' | 'STUDENT';
 
 // --- Academic ---
 export interface AcademicYear {
@@ -63,7 +63,6 @@ export interface Student {
   registerNumber: string;
   name: string;
   collegeEmail: string;
-  microsoftUserId?: string | null;
   classId: string;
   className?: string;
   batchName?: string;
@@ -111,8 +110,6 @@ export interface Staff {
   name: string;
   email?: string;
   collegeEmail: string;
-  microsoftId?: string;
-  microsoftUserId?: string | null;
   role?: UserRole;
   roles?: string[];
   department?: string;

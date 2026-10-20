@@ -1,9 +1,8 @@
 import { StudentRepository } from '../repositories/student.repository';
 import { students } from '../db/schema/students';
-import Papa from 'papaparse';
-import * as xlsx from 'xlsx';
 import { Buffer } from 'buffer';
 import { AuditService } from './audit.service';
+import { parseTabularImport } from './tabular-import';
 
 export interface AuditActor {
   actorId?: string;
@@ -77,8 +76,8 @@ export class StudentService {
     }
 
     const assignedClass = await this.repo.getClassById(data.classId);
-    if (!assignedClass) {
-      throw new Error('Assigned class not found.');
+    if (!assignedClass || assignedClass.status !== 'ACTIVE') {
+      throw new Error('Assigned class is not active or does not exist.');
     }
 
     const existingReg = await this.repo.getStudentByRegisterNumber(registerNumber);
@@ -146,7 +145,7 @@ export class StudentService {
 
     if (data.classId !== undefined) {
       const cls = await this.repo.getClassById(data.classId);
-      if (!cls) throw new Error('Assigned class not found.');
+      if (!cls || cls.status !== 'ACTIVE') throw new Error('Assigned class is not active or does not exist.');
     }
 
     const [updated] = await this.repo.updateStudent(id, updatePayload);
@@ -231,189 +230,130 @@ export class StudentService {
 
   // --- Bulk Import Logic ---
 
-  async validateImportFile(fileBuffer: Buffer, fileName: string, fileType: string) {
-    let rows: any[] = [];
-    
-    // Parse File
-    if (fileName.endsWith('.csv') || fileType === 'text/csv') {
-      const csvString = fileBuffer.toString('utf-8');
-      const parseResult = Papa.parse(csvString, { header: true, skipEmptyLines: true });
-      rows = parseResult.data;
-    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileType.includes('spreadsheet')) {
-      const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      rows = xlsx.utils.sheet_to_json(worksheet);
-    } else {
-      throw new Error('Unsupported file format. Please upload a CSV or XLSX file.');
-    }
-
-    if (!rows || rows.length === 0) {
-      throw new Error('Uploaded file is empty.');
-    }
-
-    // Pre-load all classes from DB for fast in-memory resolution
-    const allClasses = await this.repo.getAllClasses();
-    const classMapByName = new Map<string, typeof allClasses[0]>();
-    const classMapById = new Map<string, typeof allClasses[0]>();
-    for (const c of allClasses) {
-      classMapByName.set(c.name.trim().toLowerCase(), c);
-      classMapById.set(c.id, c);
-    }
-
-    const preview = {
-      totalRows: rows.length,
-      valid: 0,
-      errors: 0,
-      data: [] as any[]
-    };
-
-    const seenRegisterNumbers = new Set<string>();
-    const seenEmails = new Set<string>();
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      // Normalize column names
-      const regNo = (row['register_number'] || row['Register Number'] || row['reg_no'] || row['Reg No'] || '').toString().trim();
-      const name = (row['name'] || row['Name'] || row['student_name'] || row['Student Name'] || '').toString().trim();
-      const email = (row['college_email'] || row['College Email'] || row['email'] || row['Email'] || '').toString().trim();
-      const className = (row['class'] || row['Class'] || row['className'] || row['class_id'] || '').toString().trim();
-
-      const rowResult = {
-        rowNumber: i + 2, // 1-indexed, +1 for header
-        registerNumber: regNo,
-        name,
-        collegeEmail: email,
-        className,
-        isValid: true,
-        classId: null as string | null,
-        errors: [] as { code: string, message: string }[]
-      };
-
-      // 1. Validate required fields & format
-      if (!regNo) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'MISSING_REGISTER_NUMBER', message: 'Register number is missing' });
-      } else if (!/^[A-Za-z0-9]{5,20}$/.test(regNo)) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'INVALID_REGISTER_NUMBER', message: 'Register number must be 5-20 alphanumeric characters' });
-      }
-
-      if (!name) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'MISSING_NAME', message: 'Student name is missing' });
-      } else if (name.length < 2) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'INVALID_NAME', message: 'Student name must be at least 2 characters' });
-      }
-
-      if (!email) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'MISSING_EMAIL', message: 'College email is missing' });
-      } else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'INVALID_EMAIL', message: 'Invalid email format' });
-      } else {
-        const matchesDomain = this.allowedDomains.some(d => email.toLowerCase().endsWith(`@${d}`));
-        if (!matchesDomain) {
-          rowResult.isValid = false;
-          rowResult.errors.push({ code: 'INVALID_DOMAIN', message: `College email must end with '@${this.allowedDomains[0]}'` });
-        }
-      }
-
-      if (!className) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'MISSING_CLASS', message: 'Class is missing' });
-      }
-
-      // 2. Intra-file duplicate check
-      const normalizedReg = regNo.toUpperCase();
-      const normalizedEmail = email.toLowerCase();
-
-      if (regNo && seenRegisterNumbers.has(normalizedReg)) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'DUPLICATE_REGISTER_NUMBER', message: 'Duplicate register number in uploaded file' });
-      }
-      if (email && seenEmails.has(normalizedEmail)) {
-        rowResult.isValid = false;
-        rowResult.errors.push({ code: 'DUPLICATE_EMAIL', message: 'Duplicate email in uploaded file' });
-      }
-      if (regNo) seenRegisterNumbers.add(normalizedReg);
-      if (email) seenEmails.add(normalizedEmail);
-
-      // 3. Database Validation (Existing checks & class resolution)
-      if (rowResult.isValid) {
-        const resolvedClass = classMapByName.get(className.toLowerCase()) || classMapById.get(className);
-        if (!resolvedClass) {
-          rowResult.isValid = false;
-          rowResult.errors.push({ code: 'CLASS_NOT_FOUND', message: `Class '${className}' not found in system` });
-        } else {
-          rowResult.classId = resolvedClass.id;
-        }
-
-        const [existingReg, existingEmail] = await Promise.all([
-          this.repo.getStudentByRegisterNumber(normalizedReg),
-          this.repo.getStudentByEmail(normalizedEmail),
-        ]);
-
-        if (existingReg) {
-          rowResult.isValid = false;
-          rowResult.errors.push({ code: 'REGISTER_NUMBER_EXISTS', message: 'Student with this register number already exists in system' });
-        }
-        if (existingEmail) {
-          rowResult.isValid = false;
-          rowResult.errors.push({ code: 'EMAIL_EXISTS', message: 'Student with this email already exists in system' });
-        }
-      }
-
-      if (rowResult.isValid) {
-        preview.valid++;
-      } else {
-        preview.errors++;
-      }
-
-      preview.data.push(rowResult);
-    }
-
-    return preview;
+  private async readImportRows(fileBuffer: Buffer, fileName: string) {
+    return parseTabularImport(fileBuffer, fileName, {
+      register_number: 'register_number',
+      reg_no: 'register_number',
+      student_name: 'name',
+      name: 'name',
+      college_email: 'college_email',
+      email: 'college_email',
+      class: 'class_ref',
+      class_name: 'class_ref',
+      class_id: 'class_ref',
+    }, ['register_number', 'name', 'college_email', 'class_ref']);
   }
 
-  async confirmImport(importData: any[], actor?: AuditActor) {
-    if (!importData || importData.length === 0) {
-      throw new Error('No data provided for import.');
+  async validateImportFile(fileBuffer: Buffer, fileName: string, _fileType: string) {
+    const rows = await this.readImportRows(fileBuffer, fileName);
+    const allClasses = (await this.repo.getAllClasses()).filter((classRow) => classRow.status === 'ACTIVE');
+    const classesByName = new Map<string, typeof allClasses>();
+    const classesById = new Map(allClasses.map((classRow) => [classRow.id, classRow]));
+    for (const classRow of allClasses) {
+      const key = classRow.name.trim().toLowerCase();
+      classesByName.set(key, [...(classesByName.get(key) || []), classRow]);
     }
 
-    const hasErrors = importData.some(row => !row.isValid || !row.classId);
-    if (hasErrors) {
-      throw new Error('Cannot import file with errors. Please fix errors and upload again.');
+    const registerCounts = new Map<string, number>();
+    const emailCounts = new Map<string, number>();
+    for (const row of rows) {
+      const registerNumber = row.register_number.toUpperCase();
+      const email = row.college_email.toLowerCase();
+      if (registerNumber) registerCounts.set(registerNumber, (registerCounts.get(registerNumber) || 0) + 1);
+      if (email) emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
     }
 
-    const insertPayload = importData.map(row => ({
-      registerNumber: row.registerNumber.trim().toUpperCase(),
-      name: row.name.trim(),
-      collegeEmail: row.collegeEmail.trim().toLowerCase(),
+    const data = await Promise.all(rows.map(async (row, index) => {
+      const registerNumber = row.register_number.toUpperCase();
+      const name = row.name.trim();
+      const collegeEmail = row.college_email.toLowerCase();
+      const classRef = row.class_ref.trim();
+      const errors: { code: string; message: string }[] = [];
+      if (!registerNumber) errors.push({ code: 'MISSING_REGISTER_NUMBER', message: 'Register number is required.' });
+      else if (!/^[A-Z0-9]{5,20}$/.test(registerNumber)) errors.push({ code: 'INVALID_REGISTER_NUMBER', message: 'Register number must be 5-20 alphanumeric characters.' });
+      if (!name || name.length < 2 || name.length > 255) errors.push({ code: 'INVALID_NAME', message: 'Student name must be 2-255 characters.' });
+      if (!collegeEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(collegeEmail)) {
+        errors.push({ code: 'INVALID_EMAIL', message: 'Enter a valid college email address.' });
+      } else if (!this.allowedDomains.some((domain) => collegeEmail.endsWith(`@${domain}`))) {
+        errors.push({ code: 'INVALID_DOMAIN', message: `College email must belong to one of: ${this.allowedDomains.join(', ')}.` });
+      }
+      if (!classRef) errors.push({ code: 'MISSING_CLASS', message: 'Class ID or exact class name is required.' });
+
+      if (registerNumber && (registerCounts.get(registerNumber) || 0) > 1) {
+        errors.push({ code: 'DUPLICATE_REGISTER_NUMBER', message: 'Register number is duplicated in the uploaded file.' });
+      }
+      if (collegeEmail && (emailCounts.get(collegeEmail) || 0) > 1) {
+        errors.push({ code: 'DUPLICATE_EMAIL', message: 'Email is duplicated in the uploaded file.' });
+      }
+
+      const match = classesById.get(classRef) ||
+        (classesByName.get(classRef.toLowerCase())?.length === 1 ? classesByName.get(classRef.toLowerCase())?.[0] : undefined);
+      if (classRef && !match) {
+        const matches = classesByName.get(classRef.toLowerCase());
+        errors.push({
+          code: matches?.length ? 'AMBIGUOUS_CLASS' : 'CLASS_NOT_FOUND',
+          message: matches?.length ? 'Class name is ambiguous; use the exact class ID.' : 'Class does not exist or is inactive.',
+        });
+      }
+
+      if (registerNumber) {
+        const existing = await this.repo.getStudentByRegisterNumber(registerNumber);
+        if (existing) errors.push({ code: 'REGISTER_NUMBER_EXISTS', message: 'Register number already exists in the database.' });
+      }
+      if (collegeEmail) {
+        const existing = await this.repo.getStudentByEmail(collegeEmail);
+        if (existing) errors.push({ code: 'EMAIL_EXISTS', message: 'Email already exists in the database.' });
+      }
+
+      return {
+        rowNumber: index + 2,
+        registerNumber,
+        name,
+        collegeEmail,
+        className: match?.name || classRef,
+        classId: match?.id || null,
+        isValid: errors.length === 0,
+        errors,
+      };
+    }));
+    const valid = data.filter((row) => row.isValid).length;
+    return { totalRows: data.length, valid, errors: data.length - valid, data };
+  }
+
+  async confirmImport(fileBuffer: Buffer, fileName: string, fileType: string, actor?: AuditActor) {
+    const preview = await this.validateImportFile(fileBuffer, fileName, fileType);
+    const candidates = preview.data.filter((row) => row.isValid && row.classId);
+    const createdRows = await this.repo.bulkCreateStudentsWithConflicts(candidates.map((row) => ({
+      registerNumber: row.registerNumber,
+      name: row.name,
+      collegeEmail: row.collegeEmail,
       classId: row.classId!,
       status: 'ACTIVE' as const,
-    }));
-
-    try {
-      const result = await this.repo.bulkCreateStudents(insertPayload);
-      
-      await this.audit.log({
-        actorId: actor?.actorId,
-        actorName: actor?.actorName,
-        actorRole: actor?.actorRole,
-        action: 'BULK_IMPORT_STUDENTS',
-        entityType: 'STUDENT',
-        description: `Imported ${result.length} students via CSV/Excel bulk import`,
-        newValues: { count: result.length },
-        ipAddress: actor?.ipAddress,
-        userAgent: actor?.userAgent,
-      });
-
-      return { total: insertPayload.length, created: result.length, failed: 0 };
-    } catch (error: any) {
-      throw new Error('Bulk insert failed: ' + error.message);
-    }
+    })));
+    const createdIndexes = new Set(createdRows.map((row) => row.index));
+    const results = preview.data.map((row) => {
+      const candidateIndex = candidates.indexOf(row);
+      if (candidateIndex >= 0 && createdIndexes.has(candidateIndex)) {
+        return { rowNumber: row.rowNumber, status: 'created' as const, errors: [] };
+      }
+      const errors = row.errors.length
+        ? row.errors
+        : [{ code: 'DUPLICATE_CONFLICT', message: 'A record with this register number or email was created concurrently; nothing was overwritten.' }];
+      return { rowNumber: row.rowNumber, status: 'skipped' as const, errors };
+    });
+    const created = createdRows.length;
+    const skipped = results.length - created;
+    await this.audit.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName,
+      actorRole: actor?.actorRole,
+      action: 'BULK_IMPORT_STUDENTS',
+      entityType: 'STUDENT',
+      description: `Student import finished: ${created} created, ${skipped} skipped.`,
+      newValues: { total: results.length, created, skipped },
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+    return { total: results.length, created, skipped, failed: 0, rows: results };
   }
 }

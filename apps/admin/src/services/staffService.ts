@@ -1,6 +1,30 @@
 import { api } from './api';
 import type { StaffListResponse, Staff, ClassCounselor } from '../types';
 
+export interface StaffImportRow {
+  rowNumber: number;
+  staffCode: string;
+  name: string;
+  collegeEmail: string;
+  isValid: boolean;
+  errors: Array<{ code: string; message: string }>;
+}
+
+export interface StaffImportPreview {
+  totalRows: number;
+  valid: number;
+  errors: number;
+  data: StaffImportRow[];
+}
+
+export interface StaffImportResult {
+  total: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  rows: Array<{ rowNumber: number; status: 'created' | 'skipped'; errors: Array<{ code: string; message: string }> }>;
+}
+
 export const staffService = {
   // --- Staff ---
   getStaff: async (params?: { search?: string; status?: string; role?: string; page?: number; limit?: number }) => {
@@ -18,6 +42,37 @@ export const staffService = {
     const res = await api.get<{ data: Staff }>(`/api/staff/${id}`);
     return res.data;
   },
+
+  createStaff: async (data: Pick<Staff, 'staffCode' | 'name' | 'collegeEmail'>) => {
+    const res = await api.post<{ data: Staff }>('/api/staff', data);
+    return res.data;
+  },
+
+  updateStaff: async (id: string, data: Partial<Pick<Staff, 'staffCode' | 'name' | 'collegeEmail'>>) => {
+    const res = await api.put<{ data: Staff }>(`/api/staff/${id}`, data);
+    return res.data;
+  },
+
+  updateStaffStatus: async (id: string, status: Staff['status']) => {
+    const res = await api.patch<{ data: Staff }>(`/api/staff/${id}/status`, { status });
+    return res.data;
+  },
+
+  previewImport: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await api.postForm<{ data: StaffImportPreview }>('/api/staff/import/preview', form);
+    return res.data;
+  },
+
+  confirmImport: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await api.postForm<{ data: StaffImportResult }>('/api/staff/import/confirm', form);
+    return res.data;
+  },
+
+  downloadTemplate: () => api.download('/api/staff/import/template'),
 
   // --- Class Counselors ---
   getCounselorAssignments: async (params?: { classId?: string; academicYearId?: string; staffId?: string }) => {

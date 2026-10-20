@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../hooks/useToast';
 import './Topbar.css';
 
 const pageTitles: Record<string, string> = {
@@ -17,18 +18,33 @@ const pageTitles: Record<string, string> = {
   '/attendance': 'Attendance',
   '/audit-logs': 'Audit Logs',
   '/settings': 'Settings',
+  '/periods': 'Periods',
 };
+
+function getPageTitle(pathname: string): string {
+  if (pageTitles[pathname]) return pageTitles[pathname];
+  if (/^\/staff\/[^/]+\/timetable$/.test(pathname)) return 'Staff Timetable';
+  if (/^\/staff\/[^/]+$/.test(pathname)) return 'Staff Details';
+  if (/^\/subjects\/[^/]+$/.test(pathname)) return 'Subject Details';
+  if (/^\/attendance\/sessions\/[^/]+$/.test(pathname)) return 'Attendance Session';
+  return 'Dashboard';
+}
 
 export default function Topbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { showToast } = useToast();
   
-  const title = pageTitles[location.pathname] || 'Dashboard';
+  const title = getPageTitle(location.pathname);
 
   const handleLogout = async () => {
-    await logout();
-    navigate('/login');
+    try {
+      await logout();
+      navigate('/login');
+    } catch {
+      showToast('error', 'Could not invalidate your server session. Check the connection and try again.');
+    }
   };
 
   return (

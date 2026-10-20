@@ -6,4 +6,5 @@ export const academicService = {
   getClasses: () => api.get<ApiResponse<any[]>>("/api/classes"),
   getDepartments: () => api.get<ApiResponse<any[]>>("/api/departments"),
   getBatches: () => api.get<ApiResponse<any[]>>("/api/batches"),
+  getRegulations: () => api.get<ApiResponse<any[]>>("/api/regulations"),
 };

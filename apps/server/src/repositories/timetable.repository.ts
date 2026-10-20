@@ -1,9 +1,11 @@
 import { db } from "../db";
 import { timetables, periods } from "../db/schema/timetable";
+import { academicYears } from "../db/schema/academic";
 import { subjects } from "../db/schema/subjects";
 import { staff } from "../db/schema/staff";
 import { classes } from "../db/schema/academic";
 import { eq, and, sql } from "drizzle-orm";
+import { getWeekdayInTimeZone } from "../utils/date";
 
 export class TimetableRepository {
   async findByClass(classId: string, academicYearId?: string) {
@@ -85,16 +87,18 @@ export class TimetableRepository {
     return null;
   }
 
-  async getTimetableStats(academicYearId?: string) {
-    const now = new Date();
-    const kolkataDay = now.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' }).toUpperCase();
+  async getTimetableStats(academicYearId?: string, date = new Date()) {
+    const kolkataDay = getWeekdayInTimeZone(date);
 
-    const conditions = [];
+    const conditions = [eq(timetables.status, 'ACTIVE'), eq(periods.status, 'ACTIVE'), eq(academicYears.status, 'ACTIVE')];
     if (academicYearId) conditions.push(eq(timetables.academicYearId, academicYearId));
+    else conditions.push(eq(academicYears.isCurrent, true));
 
     const [totalRes] = await db
       .select({ count: sql`count(*)`.mapWith(Number) })
       .from(timetables)
+      .innerJoin(periods, eq(timetables.periodId, periods.id))
+      .innerJoin(academicYears, eq(timetables.academicYearId, academicYears.id))
       .where(conditions.length ? and(...conditions) : undefined);
 
     const todayConditions = [...conditions, eq(timetables.dayOfWeek, kolkataDay)];
@@ -106,6 +110,8 @@ export class TimetableRepository {
         staffCount: sql`count(distinct ${timetables.staffId})`.mapWith(Number)
       })
       .from(timetables)
+      .innerJoin(periods, eq(timetables.periodId, periods.id))
+      .innerJoin(academicYears, eq(timetables.academicYearId, academicYears.id))
       .where(and(...todayConditions));
 
     return {
@@ -118,11 +124,16 @@ export class TimetableRepository {
   }
 
   async getTodayTimetable(academicYearId?: string, classId?: string) {
-    const now = new Date();
-    const kolkataDay = now.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' }).toUpperCase();
+    const kolkataDay = getWeekdayInTimeZone();
 
-    const conditions = [eq(timetables.dayOfWeek, kolkataDay)];
+    const conditions = [
+      eq(timetables.dayOfWeek, kolkataDay),
+      eq(timetables.status, 'ACTIVE'),
+      eq(periods.status, 'ACTIVE'),
+      eq(academicYears.status, 'ACTIVE'),
+    ];
     if (academicYearId) conditions.push(eq(timetables.academicYearId, academicYearId));
+    else conditions.push(eq(academicYears.isCurrent, true));
     if (classId) conditions.push(eq(timetables.classId, classId));
 
     return await db
@@ -146,6 +157,7 @@ export class TimetableRepository {
         status: timetables.status
       })
       .from(timetables)
+      .innerJoin(academicYears, eq(timetables.academicYearId, academicYears.id))
       .innerJoin(classes, eq(timetables.classId, classes.id))
       .innerJoin(subjects, eq(timetables.subjectId, subjects.id))
       .innerJoin(staff, eq(timetables.staffId, staff.id))

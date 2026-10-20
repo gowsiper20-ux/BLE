@@ -1,275 +1,226 @@
-import { Hono } from "hono";
-import { StudentRepository } from "../repositories/student.repository";
-import { setCookie, deleteCookie } from "hono/cookie";
-import { msAuthService } from "../services/ms-auth.service";
-import { authenticate, requireHodOrAdmin, requireRole } from "../middlewares/auth.middleware";
-import type { AuthPrincipal } from "@smart-attendance/shared";
+import { Hono } from 'hono';
+import { setCookie, deleteCookie } from 'hono/cookie';
+import { StudentRepository } from '../repositories/student.repository';
+import { AuditService } from '../services/audit.service';
+import { DuplicateFacultyAccountError, LocalAuthService, localAuthService } from '../services/local-auth.service';
+import { msAuthService } from '../services/ms-auth.service';
+import { authenticate } from '../middlewares/auth.middleware';
+import type { AuthPrincipal } from '@smart-attendance/shared';
 
 export const authRoutes = new Hono();
 const studentRepo = new StudentRepository();
+const audit = new AuditService();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const MAX_LOGIN_ATTEMPTS = 8;
+const loginAttempts = new Map<string, { count: number; windowStartedAt: number }>();
 
-/**
- * POST /api/auth/microsoft
- * Primary authentication endpoint for Microsoft Entra ID.
- * Accepts Microsoft access token from client, verifies signature & claims against college tenant,
- * resolves user enrollment in PostgreSQL, and establishes application session.
- */
-authRoutes.post("/microsoft", async (c) => {
+function isDemoSignupEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production';
+}
+
+function loginKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function isUniqueConstraintViolation(error: unknown): boolean {
+  let current = error;
+  while (typeof current === 'object' && current !== null) {
+    if ('code' in current && current.code === '23505') return true;
+    current = 'cause' in current ? current.cause : undefined;
+  }
+  return false;
+}
+
+function isLoginRateLimited(key: string): boolean {
+  const current = loginAttempts.get(key);
+  if (!current) return false;
+  if (Date.now() - current.windowStartedAt >= LOGIN_WINDOW_MS) {
+    loginAttempts.delete(key);
+    return false;
+  }
+  return current.count > MAX_LOGIN_ATTEMPTS;
+}
+
+function recordFailedLogin(key: string): boolean {
+  const now = Date.now();
+  if (loginAttempts.size > 10_000) {
+    for (const [attemptKey, entry] of loginAttempts) {
+      if (now - entry.windowStartedAt >= LOGIN_WINDOW_MS) loginAttempts.delete(attemptKey);
+    }
+  }
+  if (loginAttempts.size >= 10_000 && !loginAttempts.has(key)) {
+    const oldestKey = loginAttempts.keys().next().value;
+    if (oldestKey) loginAttempts.delete(oldestKey);
+  }
+  const current = loginAttempts.get(key);
+  const entry = !current || now - current.windowStartedAt >= LOGIN_WINDOW_MS
+    ? { count: 1, windowStartedAt: now }
+    : { ...current, count: current.count + 1 };
+  loginAttempts.set(key, entry);
+  return entry.count > MAX_LOGIN_ATTEMPTS;
+}
+
+authRoutes.post('/login', async (c) => {
+  const body = await c.req.json().catch(() => null) as { email?: unknown; password?: unknown } | null;
+  if (
+    !body ||
+    typeof body.email !== 'string' ||
+    typeof body.password !== 'string' ||
+    body.email.length > 254 ||
+    new TextEncoder().encode(body.password).length > 72
+  ) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Enter a valid email address and password.' } }, 400);
+  }
+
+  const email = body.email.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Enter a valid email address and password.' } }, 400);
+  }
+
+  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const key = loginKey(email);
+  if (isLoginRateLimited(key)) {
+    return c.json({ success: false, error: { code: 'RATE_LIMITED', message: 'Too many sign-in attempts. Try again later.' } }, 429);
+  }
+
+  const result = await localAuthService.login(email, body.password);
+  if (!result) {
+    if (recordFailedLogin(key)) {
+      return c.json({ success: false, error: { code: 'RATE_LIMITED', message: 'Too many sign-in attempts. Try again later.' } }, 429);
+    }
+    await audit.log({
+      action: 'FAILED_ADMIN_LOGIN',
+      entityType: 'AUTHENTICATION',
+      description: 'An administrator sign-in attempt failed.',
+      ipAddress: ip,
+      userAgent: c.req.header('user-agent'),
+    });
+    return c.json({ success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } }, 401);
+  }
+
+  loginAttempts.delete(key);
+  setCookie(c, 'admin_token', result.token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Strict',
+    maxAge: 60 * 60 * 8,
+    path: '/',
+  });
+  await audit.log({
+    actorId: result.principal.roles.includes('FACULTY') ? undefined : result.principal.id,
+    actorName: result.principal.name,
+    actorRole: result.principal.roles[0],
+    action: result.principal.roles.includes('FACULTY') ? 'FACULTY_LOGIN' : 'ADMIN_LOGIN',
+    entityType: 'AUTHENTICATION',
+    entityId: result.principal.id,
+    description: result.principal.roles.includes('FACULTY') ? 'Faculty member signed in.' : 'Administrator signed in.',
+    ipAddress: ip,
+    userAgent: c.req.header('user-agent'),
+  });
+
+  return c.json({ success: true, user: result.principal });
+});
+
+authRoutes.get('/signup-status', (c) => {
+  return c.json({ success: true, enabled: isDemoSignupEnabled() });
+});
+
+authRoutes.post('/signup', async (c) => {
+  if (!isDemoSignupEnabled()) {
+    return c.json({ success: false, error: { code: 'SIGNUP_DISABLED', message: 'Demo sign-up is currently disabled.' } }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null) as { name?: unknown; email?: unknown; password?: unknown } | null;
+  if (
+    !body ||
+    typeof body.name !== 'string' ||
+    typeof body.email !== 'string' ||
+    typeof body.password !== 'string'
+  ) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Enter your name, a valid email, and a password of at least 12 characters.' } }, 400);
+  }
+
+  const name = body.name.trim();
+  const email = body.email.trim().toLowerCase();
+  const passwordBytes = new TextEncoder().encode(body.password).length;
+  if (
+    name.length < 2 ||
+    name.length > 255 ||
+    !LocalAuthService.isValidEmail(email) ||
+    passwordBytes < 12 ||
+    passwordBytes > 72
+  ) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Enter your name, a valid email, and a password of at least 12 characters (maximum 72 UTF-8 bytes).' } }, 400);
+  }
   try {
-    let token: string | undefined;
-
-    // Read token from Authorization header or request body
-    const authHeader = c.req.header("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.split(" ")[1];
-    } else {
-      const body = await c.req.json().catch(() => ({}));
-      token = body.token;
-    }
-
-    if (!token) {
-      return c.json(
-        {
-          success: false,
-          error: { code: "MISSING_TOKEN", message: "Microsoft access token is required." },
-        },
-        400
-      );
-    }
-
-    // 1. Validate Microsoft token
-    const claims = await msAuthService.validateMicrosoftToken(token);
-
-    // 2. Resolve database enrollment
-    const principal = await msAuthService.resolveUserIdentity(claims);
-
-    // 3. Issue application session token
-    const sessionToken = await msAuthService.createSessionToken(principal);
-
-    // 4. Set secure cookie
-    setCookie(c, "admin_token", sessionToken, {
+    const result = await localAuthService.registerFacultyAccount(name, email, body.password);
+    setCookie(c, 'admin_token', result.token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-      maxAge: 60 * 60 * 24, // 24 hours
-      path: "/",
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict',
+      maxAge: 60 * 60 * 8,
+      path: '/',
     });
-
-    return c.json({
-      success: true,
-      user: principal,
+    await audit.log({
+      actorName: result.principal.name,
+      actorRole: 'FACULTY',
+      action: 'FACULTY_SIGNUP',
+      entityType: 'AUTHENTICATION',
+      entityId: result.principal.id,
+      description: 'Faculty account created through public sign-up.',
+      ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim(),
+      userAgent: c.req.header('user-agent'),
     });
-  } catch (error: any) {
-    const message = error.message || "Microsoft authentication failed.";
-    const isUnprovisioned = message.includes("UNPROVISIONED_ACCOUNT") || message.includes("not registered");
-    const isInvalidDomain = message.includes("INVALID_DOMAIN");
-    const isInactive = message.includes("ACCOUNT_INACTIVE");
-
-    const statusCode = isUnprovisioned || isInvalidDomain || isInactive ? 403 : 401;
-
-    return c.json(
-      {
-        success: false,
-        error: {
-          code: isUnprovisioned ? "UNPROVISIONED" : isInvalidDomain ? "INVALID_DOMAIN" : "AUTH_FAILED",
-          message,
-        },
-      },
-      statusCode
-    );
+    return c.json({ success: true, user: result.principal }, 201);
+  } catch (error: unknown) {
+    if (error instanceof DuplicateFacultyAccountError || isUniqueConstraintViolation(error)) {
+      return c.json({ success: false, error: { code: 'ACCOUNT_EXISTS', message: 'An account with this email already exists.' } }, 409);
+    }
+    throw error;
   }
 });
 
-/**
- * POST /api/auth/student/login
- * Local development student login
- */
-authRoutes.post("/student/login", async (c) => {
-  if (process.env.NODE_ENV === "production") {
-    return c.json({ success: false, error: { code: "FORBIDDEN", message: "Student passwordless login is disabled in production." } }, 403);
+authRoutes.post('/student/login', async (c) => {
+  if (process.env.NODE_ENV === 'production') {
+    return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'Student passwordless login is disabled in production.' } }, 403);
   }
-
   try {
-    const body = await c.req.json();
+    const body = await c.req.json() as { username?: string; register_number?: string };
     const { username, register_number } = body;
-
     if (!username || !register_number || username !== register_number) {
-      return c.json({ success: false, error: { message: "Username and Register Number must match." } }, 400);
+      return c.json({ success: false, error: { message: 'Username and Register Number must match.' } }, 400);
     }
-
     const student = await studentRepo.getStudentByRegisterNumber(register_number);
-
-    if (!student) {
-      return c.json({ success: false, error: { code: "NOT_FOUND", message: "Student not found." } }, 404);
+    if (!student || student.status !== 'ACTIVE') {
+      return c.json({ success: false, error: { message: 'Invalid student credentials.' } }, 401);
     }
-
-    if (student.status !== "ACTIVE") {
-      return c.json({ success: false, error: { code: "INACTIVE", message: "Your student account is inactive. Please contact the administrator." } }, 403);
-    }
-
     const principal: AuthPrincipal = {
       id: student.id,
       name: student.name,
       collegeEmail: student.collegeEmail,
-      roles: ["STUDENT"],
-      userType: "STUDENT",
+      roles: ['STUDENT'],
+      userType: 'STUDENT',
       registerNumber: student.registerNumber,
       microsoftUserId: student.microsoftUserId,
     };
-
-    const sessionToken = await msAuthService.createSessionToken(principal);
-
-    return c.json({ success: true, student, token: sessionToken });
-  } catch (error: any) {
-    return c.json({ success: false, error: { message: "Internal server error." } }, 500);
+    const token = await msAuthService.createSessionToken(principal);
+    return c.json({ success: true, student, token });
+  } catch {
+    return c.json({ success: false, error: { message: 'Unable to authenticate student.' } }, 500);
   }
 });
 
-/**
- * POST /api/auth/logout
- */
-authRoutes.post("/logout", (c) => {
-  deleteCookie(c, "admin_token", { path: "/" });
-  return c.json({ success: true, message: "Logged out successfully" });
-});
-
-/**
- * GET /api/auth/me
- * Returns authenticated principal with all active role assignments.
- */
-authRoutes.get("/me", authenticate, (c) => {
-  const user = c.get("user");
-  return c.json({
-    success: true,
-    user,
-  });
-});
-
-import { msGraphService } from "../services/ms-graph.service";
-
-/**
- * POST /api/auth/sync-directory
- * Synchronizes user accounts from Microsoft Entra ID / Microsoft Graph directory into PostgreSQL.
- */
-authRoutes.post("/sync-directory", requireRole("ADMIN"), async (c) => {
-  try {
-    const user = c.get("user") as AuthPrincipal | undefined;
-    const actor = {
-      actorId: user?.id,
-      actorName: user?.name || user?.collegeEmail || "System Administrator",
-      actorRole: user?.roles?.[0] || "ADMIN",
-      ipAddress: c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "127.0.0.1",
-      userAgent: c.req.header("user-agent"),
-    };
-
-    const result = await msGraphService.syncDirectory(actor);
-    return c.json(result);
-  } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
+authRoutes.post('/logout', async (c) => {
+  const user = c.get('user') as AuthPrincipal;
+  if (user.roles.includes('FACULTY')) {
+    await localAuthService.invalidateFacultySessions(user.id);
+  } else if (user.userType === 'STAFF') {
+    await localAuthService.invalidateSessions(user.id);
   }
+  deleteCookie(c, 'admin_token', { path: '/' });
+  return c.json({ success: true });
 });
 
-/**
- * GET /api/auth/directory-status
- * Returns Microsoft Entra ID directory status and configuration details.
- */
-authRoutes.get("/directory-status", requireHodOrAdmin, async (c) => {
-  try {
-    const data = await msGraphService.getDirectoryStatus();
-    return c.json({ success: true, data });
-  } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
-  }
-});
-
-/**
- * GET /api/auth/directory-unresolved
- * Returns list of Microsoft directory users who are not yet mapped to staff or students.
- */
-authRoutes.get("/directory-unresolved", requireHodOrAdmin, async (c) => {
-  try {
-    const page = parseInt(c.req.query("page") || "1", 10);
-    const limit = parseInt(c.req.query("limit") || "50", 10);
-    const data = await msGraphService.getUnresolvedIdentities(limit, page);
-    return c.json({ success: true, ...data });
-  } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
-  }
-});
-
-/**
- * POST /api/auth/resolve-identity
- * Manually maps an unresolved Microsoft identity to an existing staff or student record.
- */
-authRoutes.post("/resolve-identity", requireHodOrAdmin, (c) => {
-  return c.json({
-    success: false,
-    error: { code: "DIRECTORY_READ_ONLY", message: "Directory identities can only be updated by Microsoft Graph synchronization." },
-  }, 405);
-});
-
-authRoutes.get("/directory-students", requireHodOrAdmin, async (c) => {
-  try {
-    const page = Number(c.req.query("page") || "1");
-    const limit = Number(c.req.query("limit") || "20");
-    const accountStatus = c.req.query("accountStatus");
-    if (accountStatus && !["enabled", "disabled", "unknown"].includes(accountStatus)) {
-      return c.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Invalid accountStatus filter." } }, 400);
-    }
-    const sortBy = c.req.query("sortBy");
-    if (sortBy && !["displayName", "email", "academicBatch", "academicClass", "accountEnabled"].includes(sortBy)) {
-      return c.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Invalid sortBy field." } }, 400);
-    }
-    const sortOrder = c.req.query("sortOrder");
-    if (sortOrder && !["asc", "desc"].includes(sortOrder)) {
-      return c.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Invalid sortOrder." } }, 400);
-    }
-    const data = await msGraphService.getItStudents({
-      search: c.req.query("search"),
-      academicBatch: c.req.query("academicBatch"),
-      academicClass: c.req.query("academicClass"),
-      accountStatus: accountStatus as "enabled" | "disabled" | "unknown" | undefined,
-      page,
-      limit,
-      sortBy: sortBy as "displayName" | "email" | "academicBatch" | "academicClass" | "accountEnabled" | undefined,
-      sortOrder: sortOrder as "asc" | "desc" | undefined,
-    });
-    return c.json({ success: true, data });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Directory student query failed.";
-    const status = message.startsWith("INVALID_") ? 400 : 500;
-    return c.json({ success: false, error: { message } }, status);
-  }
-});
-
-authRoutes.get("/directory-staff", requireHodOrAdmin, async (c) => {
-  try {
-    const page = Number(c.req.query("page") || "1");
-    const limit = Number(c.req.query("limit") || "20");
-    const accountStatus = c.req.query("accountStatus");
-    if (accountStatus && !["enabled", "disabled", "unknown"].includes(accountStatus)) {
-      return c.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Invalid accountStatus filter." } }, 400);
-    }
-    const sortBy = c.req.query("sortBy");
-    if (sortBy && !["displayName", "email", "academicBatch", "academicClass", "accountEnabled"].includes(sortBy)) {
-      return c.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Invalid sortBy field." } }, 400);
-    }
-    const sortOrder = c.req.query("sortOrder");
-    if (sortOrder && !["asc", "desc"].includes(sortOrder)) {
-      return c.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Invalid sortOrder." } }, 400);
-    }
-    const data = await msGraphService.getItStaff({
-      search: c.req.query("search"),
-      accountStatus: accountStatus as "enabled" | "disabled" | "unknown" | undefined,
-      page,
-      limit,
-      sortBy: sortBy as "displayName" | "email" | "academicBatch" | "academicClass" | "accountEnabled" | undefined,
-      sortOrder: sortOrder as "asc" | "desc" | undefined,
-    });
-    return c.json({ success: true, data });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Directory staff query failed.";
-    const status = message.startsWith("INVALID_") ? 400 : 500;
-    return c.json({ success: false, error: { message } }, status);
-  }
+authRoutes.get('/me', authenticate, (c) => {
+  return c.json({ success: true, user: c.get('user') });
 });

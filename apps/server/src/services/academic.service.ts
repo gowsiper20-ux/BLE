@@ -197,7 +197,10 @@ export class AcademicService {
       throw new Error('Start year must be less than end year.');
     }
 
-    const departmentId = await this.getDefaultDepartmentId(data.departmentId);
+    const departmentId = data.departmentId;
+    if (!departmentId) throw new Error('Department is required for a batch.');
+    const department = await this.repo.getDepartmentById(departmentId);
+    if (!department || department.status !== 'ACTIVE') throw new Error('Active department not found.');
     data.departmentId = departmentId;
     data.name = data.name.trim();
 
@@ -438,7 +441,9 @@ export class AcademicService {
       throw new Error('Regulation is required.');
     }
 
-    const departmentId = await this.getDefaultDepartmentId(data.departmentId);
+    if (!data.departmentId) throw new Error('Department is required for a class.');
+    const departmentId = data.departmentId;
+    await this.validateClassReferences(departmentId, data.academicYearId, data.batchId, data.regulationId);
     const section = data.section.trim().toUpperCase();
 
     // Auto-generate name if not provided
@@ -491,6 +496,8 @@ export class AcademicService {
     const section = data.section !== undefined ? data.section.trim().toUpperCase() : existingCls.section;
     const deptId = data.departmentId || existingCls.departmentId;
     const acYearId = data.academicYearId || existingCls.academicYearId;
+    const batchId = data.batchId || existingCls.batchId;
+    const regulationId = data.regulationId || existingCls.regulationId;
 
     if (yearNumber < 1 || yearNumber > 4) {
       throw new Error('Year number must be between 1 and 4.');
@@ -499,6 +506,7 @@ export class AcademicService {
     if (!section) {
       throw new Error('Section cannot be empty.');
     }
+    await this.validateClassReferences(deptId, acYearId, batchId, regulationId);
 
     if (data.yearNumber !== undefined || data.section !== undefined || data.departmentId || data.academicYearId) {
       const existing = await this.repo.getClassByUniqueConstraint(deptId, acYearId, yearNumber, section);
@@ -528,6 +536,25 @@ export class AcademicService {
     });
 
     return updated;
+  }
+
+  private async validateClassReferences(
+    departmentId: string,
+    academicYearId: string,
+    batchId: string,
+    regulationId: string,
+  ) {
+    const [department, academicYear, batch, regulation] = await Promise.all([
+      this.repo.getDepartmentById(departmentId),
+      this.repo.getAcademicYearById(academicYearId),
+      this.repo.getBatchById(batchId),
+      this.repo.getRegulationById(regulationId),
+    ]);
+    if (!department || department.status !== 'ACTIVE') throw new Error('Active department not found.');
+    if (!academicYear || academicYear.status !== 'ACTIVE') throw new Error('Active academic year not found.');
+    if (!batch || batch.status !== 'ACTIVE') throw new Error('Active admission batch not found.');
+    if (batch.departmentId !== departmentId) throw new Error('Batch must belong to the selected department.');
+    if (!regulation || regulation.status !== 'ACTIVE') throw new Error('Active regulation not found.');
   }
 
   async deleteClass(id: string, actor?: AuditActor) {

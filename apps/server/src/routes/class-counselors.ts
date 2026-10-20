@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { StaffService } from "../services/staff.service";
-import { requireHodOrAdmin, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireSharedModuleAccess, requireStaffOrAdmin } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const counselorRoutes = new Hono();
@@ -9,7 +9,7 @@ const service = new StaffService();
 function getActorFromContext(c: any) {
   const user = c.get('user') as AuthPrincipal | undefined;
   return {
-    actorId: user?.id,
+    actorId: user?.roles.includes('FACULTY') ? undefined : user?.id,
     actorName: user?.name || user?.collegeEmail || 'System User',
     actorRole: user?.roles?.[0] || 'ADMIN',
     ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1',
@@ -51,7 +51,7 @@ counselorRoutes.get("/", requireStaffOrAdmin, async (c) => {
   }
 });
 
-counselorRoutes.post("/", requireHodOrAdmin, async (c) => {
+counselorRoutes.post("/", requireSharedModuleAccess, async (c) => {
   try {
     const actor = getActorFromContext(c);
     const body = await c.req.json();
@@ -62,7 +62,7 @@ counselorRoutes.post("/", requireHodOrAdmin, async (c) => {
   }
 });
 
-counselorRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
+counselorRoutes.patch("/:id/status", requireSharedModuleAccess, async (c) => {
   try {
     const actor = getActorFromContext(c);
     const body = await c.req.json();
@@ -73,7 +73,7 @@ counselorRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
   }
 });
 
-counselorRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
+counselorRoutes.delete("/:id", requireSharedModuleAccess, async (c) => {
   try {
     const actor = getActorFromContext(c);
     await service.deleteCounselorAssignment(c.req.param("id")!, actor);

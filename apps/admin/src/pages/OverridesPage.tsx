@@ -20,7 +20,7 @@ export default function OverridesPage() {
 
   // Form State
   const [selectedTimetableId, setSelectedTimetableId] = useState('');
-  const [overrideDate, setOverrideDate] = useState(new Date().toISOString().split('T')[0]);
+  const [overrideDate, setOverrideDate] = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
   const [replacementStaffId, setReplacementStaffId] = useState('');
   const [replacementSubjectId, setReplacementSubjectId] = useState('');
   const [reason, setReason] = useState('');

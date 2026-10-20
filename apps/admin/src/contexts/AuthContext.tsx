@@ -1,19 +1,27 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import { InteractionRequiredAuthError } from '@azure/msal-browser';
 import { api } from '../services/api';
-import type { Staff, UserRole } from '../types';
-import { isMsalConfigured, msalInstance, loginRequest } from '../config/msalConfig';
+import type { UserRole } from '../types';
 
 interface AuthState {
   isAuthenticated: boolean;
-  user: Staff | null;
+  user: AuthUser | null;
   roles: UserRole[];
   loading: boolean;
 }
 
+interface AuthUser {
+  id: string;
+  name: string;
+  collegeEmail: string;
+  staffCode?: string;
+  roles?: UserRole[];
+  role?: UserRole;
+}
+
 interface AuthContextType extends AuthState {
-  loginWithMicrosoft: () => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   hasRole: (role: UserRole) => boolean;
   hasAnyRole: (roles: UserRole[]) => boolean;
@@ -22,18 +30,17 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function isUserRole(role: string): role is UserRole {
-  return ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF', 'STUDENT'].includes(role);
+  return ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF', 'FACULTY', 'STUDENT'].includes(role);
 }
 
-function extractRoles(user: Staff | undefined): UserRole[] {
+function extractRoles(user: AuthUser | undefined): UserRole[] {
   if (!user) return [];
-  if (Array.isArray(user.roles) && user.roles.length > 0) {
-    return user.roles.filter(isUserRole);
-  }
-  if (user.role) {
-    return [user.role];
-  }
-  return [];
+  if (Array.isArray(user.roles) && user.roles.length > 0) return user.roles.filter(isUserRole);
+  return user.role ? [user.role] : [];
+}
+
+function canUseStaffPortal(roles: UserRole[]): boolean {
+  return roles.some((role) => ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF', 'FACULTY'].includes(role));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -46,122 +53,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const res = await api.get<{ success: boolean; user?: Staff }>('/api/auth/me');
-      if (res.success && res.user) {
-        const roles = extractRoles(res.user);
-        setState({
-          isAuthenticated: true,
-          user: { ...res.user, roles },
-          roles,
-          loading: false,
-        });
-      } else {
-        api.setToken(null);
-        setState({ isAuthenticated: false, user: null, roles: [], loading: false });
+      const response = await api.get<{ success: boolean; user?: AuthUser }>('/api/auth/me');
+      const roles = extractRoles(response.user);
+      if (response.success && response.user && canUseStaffPortal(roles)) {
+        setState({ isAuthenticated: true, user: { ...response.user, roles }, roles, loading: false });
+        return;
       }
     } catch {
-      api.setToken(null);
-      setState({ isAuthenticated: false, user: null, roles: [], loading: false });
+      // A missing or expired server session is the normal signed-out state.
     }
+    setState({ isAuthenticated: false, user: null, roles: [], loading: false });
   }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(checkAuth);
+    void checkAuth();
   }, [checkAuth]);
 
-  const loginWithMicrosoft = async (): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      if (!isMsalConfigured() || loginRequest.scopes.length !== 1) {
-        throw new Error('Microsoft sign-in is not configured. Set the tenant, SPA client, and backend API scope.');
+      const response = await api.post<{ success: boolean; user?: AuthUser; error?: { message?: string } }>(
+        '/api/auth/login',
+        { email, password },
+      );
+      const roles = extractRoles(response.user);
+      if (!response.success || !response.user || !canUseStaffPortal(roles)) {
+        return { success: false, error: response.error?.message || 'Sign-in failed.' };
       }
-
-      const loginResponse = await msalInstance.loginPopup(loginRequest);
-      if (!loginResponse.account) {
-        throw new Error('Microsoft sign-in did not return an account.');
-      }
-
-      msalInstance.setActiveAccount(loginResponse.account);
-      let accessToken: string;
-      try {
-        const tokenResponse = await msalInstance.acquireTokenSilent({
-          ...loginRequest,
-          account: loginResponse.account,
-        });
-        accessToken = tokenResponse.accessToken;
-      } catch (error) {
-        if (!(error instanceof InteractionRequiredAuthError)) throw error;
-        const tokenResponse = await msalInstance.acquireTokenPopup({
-          ...loginRequest,
-          account: loginResponse.account,
-        });
-        accessToken = tokenResponse.accessToken;
-      }
-      if (!accessToken) throw new Error('Microsoft did not issue an access token for the backend API.');
-
-      const res = await api.post<{
-        success: boolean;
-        user: Staff;
-        error?: { code?: string; message?: string };
-      }>('/api/auth/microsoft', { token: accessToken });
-
-      if (res.success && res.user) {
-        const roles = extractRoles(res.user);
-        setState({
-          isAuthenticated: true,
-          user: { ...res.user, roles },
-          roles,
-          loading: false,
-        });
-        return { success: true };
-      }
-
+      setState({ isAuthenticated: true, user: { ...response.user, roles }, roles, loading: false });
+      return { success: true };
+    } catch (error: unknown) {
       return {
         success: false,
-        error: res.error?.message || 'Microsoft login failed.',
+        error: error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+          ? error.message
+          : 'Unable to sign in. Please try again.',
       };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Microsoft authentication was cancelled or failed.';
-      return { success: false, error: message };
+    }
+  };
+
+  const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await api.post<{ success: boolean; user?: AuthUser; error?: { message?: string } }>(
+        '/api/auth/signup',
+        { name, email, password },
+      );
+      const roles = extractRoles(response.user);
+      if (!response.success || !response.user || !roles.includes('FACULTY')) {
+        return { success: false, error: response.error?.message || 'Sign-up failed.' };
+      }
+      setState({ isAuthenticated: true, user: { ...response.user, roles }, roles, loading: false });
+      return { success: true };
+    } catch (error: unknown) {
+      return {
+        success: false,
+        error: error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+          ? error.message
+          : 'Unable to create the demo account. Please try again.',
+      };
     }
   };
 
   const logout = async () => {
-    try {
-      await api.post('/api/auth/logout');
-    } catch {
-      // Ignore API errors during logout
-    }
-    api.setToken(null);
-    try {
-      // Check if there's an active MSAL account to log out from
-      const activeAccount = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
-      if (activeAccount) {
-        await msalInstance.logoutPopup({ account: activeAccount });
-      }
-    } catch {
-      // Ignore MSAL popup errors during logout
-    }
+    await api.post('/api/auth/logout');
     setState({ isAuthenticated: false, user: null, roles: [], loading: false });
   };
 
-  const hasRole = (role: UserRole): boolean => {
-    return state.roles.includes(role);
-  };
-
-  const hasAnyRole = (rolesToCheck: UserRole[]): boolean => {
-    return rolesToCheck.some((r) => state.roles.includes(r));
-  };
+  const hasRole = (role: UserRole) => state.roles.includes(role);
+  const hasAnyRole = (rolesToCheck: UserRole[]) => rolesToCheck.some((role) => state.roles.includes(role));
 
   return (
-    <AuthContext.Provider
-      value={{
-        ...state,
-        loginWithMicrosoft,
-        logout,
-        hasRole,
-        hasAnyRole,
-      }}
-    >
+    <AuthContext.Provider value={{ ...state, login, signup, logout, hasRole, hasAnyRole }}>
       {children}
     </AuthContext.Provider>
   );
@@ -170,8 +131,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

@@ -73,18 +73,16 @@ export default function StaffDetailsPage() {
             <div><strong>Staff Code:</strong> {staff.staffCode}</div>
             <div><strong>Name:</strong> {staff.name}</div>
             <div><strong>College Email:</strong> {staff.collegeEmail}</div>
-            <div><strong>Microsoft User ID:</strong> {staff.microsoftUserId || 'Not linked'}</div>
             <div>
               <strong>Status:</strong> <Badge variant={staff.status === 'ACTIVE' ? 'success' : 'danger'}>{staff.status}</Badge>
             </div>
-            <div><strong>Directory source:</strong> Not verified against Microsoft Entra ID</div>
           </div>
         </div>
 
         <div style={{ backgroundColor: 'var(--bg-surface)', padding: '24px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
           <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Icon name="roles" size={20} />
-            Existing application roles (unverified)
+            Staff roles
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {(staff.roles || []).map((role) => <Badge key={role} variant="default">{role}</Badge>)}

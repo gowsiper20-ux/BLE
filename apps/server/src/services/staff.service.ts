@@ -1,6 +1,8 @@
 import { StaffRepository } from '../repositories/staff.repository';
 import { staff, classCounselors } from '../db/schema/staff';
 import { AuditService } from './audit.service';
+import type { Buffer } from 'node:buffer';
+import { parseTabularImport } from './tabular-import';
 
 export interface AuditActor {
   actorId?: string;
@@ -22,6 +24,98 @@ export class StaffService {
     this.audit = new AuditService();
     const envDomain = process.env.COLLEGE_EMAIL_DOMAIN || 'sonatech.ac.in';
     this.allowedDomains = envDomain.toLowerCase().split(',').map(d => d.trim().replace(/^@/, ''));
+  }
+
+  async validateImportFile(fileBuffer: Buffer, fileName: string) {
+    const rows = parseTabularImport(fileBuffer, fileName, {
+      staff_code: 'staff_code',
+      staff_id: 'staff_code',
+      name: 'name',
+      full_name: 'name',
+      college_email: 'college_email',
+      email: 'college_email',
+    }, ['staff_code', 'name', 'college_email']);
+    const codeCounts = new Map<string, number>();
+    const emailCounts = new Map<string, number>();
+    for (const row of rows) {
+      const code = row.staff_code.toUpperCase();
+      const email = row.college_email.toLowerCase();
+      if (code) codeCounts.set(code, (codeCounts.get(code) || 0) + 1);
+      if (email) emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
+    }
+
+    const data = await Promise.all(rows.map(async (row, index) => {
+      const staffCode = row.staff_code.toUpperCase();
+      const name = row.name.trim();
+      const collegeEmail = row.college_email.toLowerCase();
+      const errors: { code: string; message: string }[] = [];
+      if (!staffCode) errors.push({ code: 'MISSING_STAFF_CODE', message: 'Staff code is required.' });
+      else if (!/^[A-Z0-9_-]{3,30}$/.test(staffCode)) errors.push({ code: 'INVALID_STAFF_CODE', message: 'Staff code must be 3-30 alphanumeric characters, hyphens, or underscores.' });
+      if (name.length < 2 || name.length > 255) errors.push({ code: 'INVALID_NAME', message: 'Faculty name must be 2-255 characters.' });
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(collegeEmail)) {
+        errors.push({ code: 'INVALID_EMAIL', message: 'Enter a valid college email address.' });
+      } else if (!this.allowedDomains.some((domain) => collegeEmail.endsWith(`@${domain}`))) {
+        errors.push({ code: 'INVALID_DOMAIN', message: `College email must belong to one of: ${this.allowedDomains.join(', ')}.` });
+      }
+      if (staffCode && (codeCounts.get(staffCode) || 0) > 1) {
+        errors.push({ code: 'DUPLICATE_STAFF_CODE', message: 'Staff code is duplicated in the uploaded file.' });
+      }
+      if (collegeEmail && (emailCounts.get(collegeEmail) || 0) > 1) {
+        errors.push({ code: 'DUPLICATE_EMAIL', message: 'Email is duplicated in the uploaded file.' });
+      }
+      if (staffCode && await this.repo.getStaffByCode(staffCode)) {
+        errors.push({ code: 'STAFF_CODE_EXISTS', message: 'Staff code already exists in the database.' });
+      }
+      if (collegeEmail && await this.repo.getStaffByEmail(collegeEmail)) {
+        errors.push({ code: 'EMAIL_EXISTS', message: 'Email already exists in the database.' });
+      }
+      return {
+        rowNumber: index + 2,
+        staffCode,
+        name,
+        collegeEmail,
+        isValid: errors.length === 0,
+        errors,
+      };
+    }));
+    const valid = data.filter((row) => row.isValid).length;
+    return { totalRows: data.length, valid, errors: data.length - valid, data };
+  }
+
+  async confirmImport(fileBuffer: Buffer, fileName: string, actor?: AuditActor) {
+    const preview = await this.validateImportFile(fileBuffer, fileName);
+    const candidates = preview.data.filter((row) => row.isValid);
+    const createdRows = await this.repo.bulkCreateStaffWithConflicts(candidates.map((row) => ({
+      staffCode: row.staffCode,
+      name: row.name,
+      collegeEmail: row.collegeEmail,
+      status: 'ACTIVE' as const,
+    })));
+    const createdIndexes = new Set(createdRows.map((row) => row.index));
+    const results = preview.data.map((row) => {
+      const candidateIndex = candidates.indexOf(row);
+      if (candidateIndex >= 0 && createdIndexes.has(candidateIndex)) {
+        return { rowNumber: row.rowNumber, status: 'created' as const, errors: [] };
+      }
+      const errors = row.errors.length
+        ? row.errors
+        : [{ code: 'DUPLICATE_CONFLICT', message: 'A record with this staff code or email was created concurrently; nothing was overwritten.' }];
+      return { rowNumber: row.rowNumber, status: 'skipped' as const, errors };
+    });
+    const created = createdRows.length;
+    const skipped = results.length - created;
+    await this.audit.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName,
+      actorRole: actor?.actorRole,
+      action: 'BULK_IMPORT_STAFF',
+      entityType: 'STAFF',
+      description: `Faculty import finished: ${created} created, ${skipped} skipped.`,
+      newValues: { total: results.length, created, skipped },
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+    return { total: results.length, created, skipped, failed: 0, rows: results };
   }
 
   private validateEmail(email?: string): string {
@@ -83,18 +177,19 @@ export class StaffService {
 
     const { roles: inputRoles, ...staffData } = data;
 
-    const [created] = await this.repo.createStaff({
+    const rolesToAssign = [...new Set((inputRoles && inputRoles.length > 0) ? inputRoles : ['STAFF'])];
+    for (const roleName of rolesToAssign) {
+      if (!ALLOWED_STAFF_ROLES.includes(roleName)) {
+        throw new Error(`Invalid role '${roleName}'. Allowed roles: ${ALLOWED_STAFF_ROLES.join(', ')}.`);
+      }
+    }
+
+    const created = await this.repo.createStaffWithRoles({
       ...staffData,
       staffCode,
       collegeEmail,
       name,
-    });
-    
-    // Assign roles (default to STAFF if none provided)
-    const rolesToAssign = (inputRoles && inputRoles.length > 0) ? inputRoles : ['STAFF'];
-    for (const roleName of rolesToAssign) {
-      await this.assignRole(created.id, roleName, actor);
-    }
+    }, rolesToAssign);
     
     await this.audit.log({
       actorId: actor?.actorId,

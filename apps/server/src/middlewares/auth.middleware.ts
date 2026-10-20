@@ -1,6 +1,7 @@
 import { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { msAuthService } from '../services/ms-auth.service';
+import { localAuthService } from '../services/local-auth.service';
 import { db } from '../db';
 import { classCounselors } from '../db/schema/staff';
 import { eq, and } from 'drizzle-orm';
@@ -15,59 +16,42 @@ declare module 'hono' {
 }
 
 /**
- * Global authentication middleware.
- * Resolves identity from either an application session JWT or a direct Microsoft Entra access token.
+ * Resolves a browser HOD session cookie or an application-issued mobile bearer token.
  */
 export const authenticate = async (c: Context, next: Next) => {
   const adminToken = getCookie(c, 'admin_token');
   const authHeader = c.req.header('Authorization');
-  let token: string | undefined = adminToken;
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.split(' ')[1]?.trim();
-  }
-
-  if (!token) {
-    return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required. No bearer token or session cookie provided.' } }, 401);
-  }
-
+  let principal: AuthPrincipal | null = null;
   try {
-    let principal: AuthPrincipal | null = null;
-
-    // 1. Try verifying as an internal session JWT
-    try {
-      principal = await msAuthService.verifySessionToken(token);
-    } catch (sessionErr: any) {
-      // 2. If not a valid session token, try verifying directly as a Microsoft Entra ID token
-      try {
-        const claims = await msAuthService.validateMicrosoftToken(token);
-        principal = await msAuthService.resolveUserIdentity(claims);
-      } catch (msErr: any) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'INVALID_TOKEN',
-            message: msErr.message || 'Token verification failed.',
-          },
-        }, 401);
+    if (adminToken) {
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
+        const requestOrigin = c.req.header('origin');
+        if (!requestOrigin || requestOrigin !== (process.env.CORS_ORIGIN || 'http://localhost:5173')) {
+          return c.json({ success: false, error: { code: 'CSRF_REJECTED', message: 'Request origin is not allowed.' } }, 403);
+        }
+      }
+      principal = await localAuthService.verifySession(adminToken);
+    } else {
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : undefined;
+      if (token) {
+        principal = await msAuthService.verifySessionToken(token);
       }
     }
 
-    if (!principal) {
-      return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Unable to resolve identity.' } }, 401);
-    }
-
-    c.set('user', principal);
-    await next();
-  } catch (err: any) {
+  } catch {
     return c.json({
       success: false,
       error: {
-        code: 'AUTH_FAILED',
-        message: err.message || 'Authentication error.',
+        code: 'INVALID_SESSION',
+        message: 'Your session is invalid or expired. Please sign in again.',
       },
     }, 401);
   }
+  if (!principal) {
+    return c.json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } }, 401);
+  }
+  c.set('user', principal);
+  await next();
 };
 
 /**
@@ -123,9 +107,41 @@ export const requireAdminAuth = async (c: Context, next: Next) => {
 export const requireHodOrAdmin = requireRole('ADMIN', 'HOD', 'DEPUTY_HOD');
 
 /**
- * Any staff member or administrator
+ * Authenticated users of the current shared HOD/faculty application modules.
  */
-export const requireStaffOrAdmin = requireRole('ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF');
+export const requireSharedModuleAccess = requireRole(
+  'ADMIN',
+  'HOD',
+  'DEPUTY_HOD',
+  'CLASS_COUNSELOR',
+  'STAFF',
+  'FACULTY',
+);
+
+export const requireStaffOrAdmin = requireSharedModuleAccess;
+
+/**
+ * Backward-compatible guard name for shared application routes.
+ */
+export const requireSharedDashboardRead = requireSharedModuleAccess;
+
+/**
+ * Attendance writes require a principal backed by the staff table.
+ * Public FACULTY accounts are intentionally not assigned fabricated staff identities.
+ */
+export const requireLinkedAttendanceStaff = async (c: Context, next: Next) => {
+  const user = c.get('user') as AuthPrincipal | undefined;
+  if (user?.roles.includes('FACULTY') && !user.roles.some((role) => ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF'].includes(role))) {
+    return c.json({
+      success: false,
+      error: {
+        code: 'STAFF_PROFILE_REQUIRED',
+        message: 'Attendance changes require a faculty account linked to an active staff profile and timetable assignment.',
+      },
+    }, 403);
+  }
+  await next();
+};
 
 /**
  * Class-level resource authorization check:

@@ -1,25 +1,24 @@
 import { Hono } from "hono";
 import { StaffService } from "../services/staff.service";
 import { TimetableRepository } from "../repositories/timetable.repository";
-import { requireStaffOrAdmin, requireHodOrAdmin } from "../middlewares/auth.middleware";
+import { requireSharedModuleAccess, requireStaffOrAdmin } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
+import { Buffer } from "node:buffer";
+import type { staff } from "../db/schema/staff";
+import { TabularImportError } from '../services/tabular-import';
 
 export const staffRoutes = new Hono();
 const service = new StaffService();
 const timetableRepo = new TimetableRepository();
 
-staffRoutes.use("*", async (c, next) => {
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method)) {
-    return c.json({
-      success: false,
-      error: { code: "DIRECTORY_READ_ONLY", message: "Staff directory identities and roles are read-only and managed by trusted synchronization." },
-    }, 405);
-  }
-  await next();
-});
-
 function handleStaffError(c: any, error: any) {
   const msg = error?.message || 'An unexpected error occurred.';
+  if (error instanceof TabularImportError) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: msg } }, 400);
+  }
+  if (error?.code === '23505') {
+    return c.json({ success: false, error: { code: 'CONFLICT', message: 'A staff member with this staff code or email already exists.' } }, 409);
+  }
   if (
     msg.includes('already exists') ||
     msg.includes('Cannot delete') ||
@@ -44,11 +43,133 @@ function handleStaffError(c: any, error: any) {
   ) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: msg } }, 400);
   }
-  return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: msg } }, 500);
+  return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Unable to complete the faculty request. Please retry.' } }, 500);
 }
 
-// Listing staff: ADMIN, HOD, and DEPUTY_HOD can view all staff
-staffRoutes.get("/", requireHodOrAdmin, async (c) => {
+function getActor(c: any) {
+  const user = c.get('user');
+  return {
+    actorId: user?.roles.includes('FACULTY') ? undefined : user?.id,
+    actorName: user?.name,
+    actorRole: user?.roles?.[0],
+    ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim(),
+    userAgent: c.req.header('user-agent'),
+  };
+}
+
+async function getImportFile(c: any): Promise<{ file: File; buffer: Buffer } | Response> {
+  const contentLength = Number(c.req.header('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > 5 * 1024 * 1024 + 64 * 1024) {
+    return c.json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Import files are limited to 5 MB.' } }, 413);
+  }
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Choose a CSV or XLSX file.' } }, 400);
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return c.json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Import files are limited to 5 MB.' } }, 413);
+  }
+  const extension = file.name.toLowerCase().split('.').pop();
+  const allowedTypes = extension === 'csv'
+    ? ['text/csv', 'application/vnd.ms-excel', 'application/octet-stream', '']
+    : extension === 'xlsx'
+      ? ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream', '']
+      : [];
+  if (!allowedTypes.includes(file.type.toLowerCase())) {
+    return c.json({ success: false, error: { code: 'UNSUPPORTED_FILE', message: 'Upload a valid .csv or .xlsx file.' } }, 400);
+  }
+  return { file, buffer: Buffer.from(await file.arrayBuffer()) };
+}
+
+staffRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="faculty-import-template.csv"');
+  return c.body('staff_code,name,college_email\r\n');
+});
+
+staffRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
+  try {
+    const upload = await getImportFile(c);
+    if (upload instanceof Response) return upload;
+    const data = await service.validateImportFile(upload.buffer, upload.file.name);
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
+  try {
+    const upload = await getImportFile(c);
+    if (upload instanceof Response) return upload;
+    const data = await service.confirmImport(upload.buffer, upload.file.name, getActor(c));
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.post('/', requireSharedModuleAccess, async (c) => {
+  try {
+    const body = await c.req.json() as Record<string, unknown>;
+    if (
+      typeof body.staffCode !== 'string' ||
+      typeof body.name !== 'string' ||
+      typeof body.collegeEmail !== 'string'
+    ) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Staff code, name, and college email are required.' } }, 400);
+    }
+    const data = await service.createStaff({
+      staffCode: body.staffCode,
+      name: body.name,
+      collegeEmail: body.collegeEmail,
+      status: 'ACTIVE',
+      roles: ['STAFF'],
+    }, getActor(c));
+    return c.json({ success: true, data }, 201);
+  } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.put('/:id', requireSharedModuleAccess, async (c) => {
+  try {
+    const body = await c.req.json() as Record<string, unknown>;
+    const update: Partial<typeof staff.$inferInsert> = {};
+    for (const field of ['staffCode', 'name', 'collegeEmail'] as const) {
+      if (body[field] !== undefined) {
+        if (typeof body[field] !== 'string') {
+          return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: `${field} must be a string.` } }, 400);
+        }
+        update[field] = body[field];
+      }
+    }
+    if (!Object.keys(update).length) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Provide at least one permitted field to update.' } }, 400);
+    }
+    const data = await service.updateStaff(c.req.param('id')!, update, getActor(c));
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.patch('/:id/status', requireSharedModuleAccess, async (c) => {
+  try {
+    const body = await c.req.json() as { status?: string };
+    if (!['ACTIVE', 'INACTIVE'].includes(body.status || '')) {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Choose a supported staff status.' } }, 400);
+    }
+    const data = await service.updateStaffStatus(c.req.param('id')!, body.status as 'ACTIVE' | 'INACTIVE', getActor(c));
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+// Shared application users can view the actual faculty/staff directory.
+staffRoutes.get("/", requireSharedModuleAccess, async (c) => {
   try {
     const search = c.req.query("search");
     const status = c.req.query("status");
@@ -70,7 +191,7 @@ staffRoutes.get("/:id", requireStaffOrAdmin, async (c) => {
     const targetId = c.req.param("id")!;
 
     const isSelf = user.id === targetId;
-    const isLeadership = user.roles.some((r: string) => ["ADMIN", "HOD", "DEPUTY_HOD"].includes(r));
+    const isLeadership = user.roles.some((r: string) => ["ADMIN", "HOD", "DEPUTY_HOD", "FACULTY"].includes(r));
 
     if (!isSelf && !isLeadership) {
       return c.json({ success: false, error: { code: 'FORBIDDEN', message: "Forbidden: You may only view your own profile." } }, 403);

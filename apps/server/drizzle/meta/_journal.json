@@ -85,6 +85,27 @@
       "when": 1792450000000,
       "tag": "0011_subject_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792455000000,
+      "tag": "0012_authorized_directory_feed",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792520000000,
+      "tag": "0013_hod_local_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792521000000,
+      "tag": "0014_faculty_auth_accounts",
+      "breakpoints": true
     }
   ]
 }

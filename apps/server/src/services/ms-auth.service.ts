@@ -182,6 +182,9 @@ export class MsAuthService {
       .then((rows) => rows[0]);
 
     if (existingIdentity) {
+      if (existingIdentity.source !== 'COLLEGE_AUTHORIZED_FEED' || !existingIdentity.isPresent) {
+        throw new Error('UNPROVISIONED_ACCOUNT: This identity is not present in the latest authorized directory snapshot.');
+      }
       if (existingIdentity.status !== 'ACTIVE') {
         throw new Error('ACCOUNT_INACTIVE: This Microsoft identity mapping has been disabled.');
       }
@@ -201,6 +204,18 @@ export class MsAuthService {
   }
 
   private async resolveStaffPrincipal(staffId: string, oid: string, tid: string): Promise<AuthPrincipal> {
+    const [directoryIdentity] = await db.select({ status: externalIdentities.status })
+      .from(externalIdentities)
+      .where(and(
+        eq(externalIdentities.tenantId, tid),
+        eq(externalIdentities.oid, oid),
+        eq(externalIdentities.source, 'COLLEGE_AUTHORIZED_FEED'),
+        eq(externalIdentities.isPresent, true),
+      ))
+      .limit(1);
+    if (!directoryIdentity || directoryIdentity.status !== 'ACTIVE') {
+      throw new Error('ACCOUNT_INACTIVE: Microsoft identity is no longer active in the authorized directory snapshot.');
+    }
     const staffUser = await db.select().from(staff).where(eq(staff.id, staffId)).then((rows) => rows[0]);
     if (!staffUser || staffUser.status !== 'ACTIVE') {
       throw new Error('ACCOUNT_INACTIVE: Staff account is inactive or not found.');
@@ -229,6 +244,18 @@ export class MsAuthService {
   }
 
   private async resolveStudentPrincipal(studentId: string, oid: string, tid: string): Promise<AuthPrincipal> {
+    const [directoryIdentity] = await db.select({ status: externalIdentities.status })
+      .from(externalIdentities)
+      .where(and(
+        eq(externalIdentities.tenantId, tid),
+        eq(externalIdentities.oid, oid),
+        eq(externalIdentities.source, 'COLLEGE_AUTHORIZED_FEED'),
+        eq(externalIdentities.isPresent, true),
+      ))
+      .limit(1);
+    if (!directoryIdentity || directoryIdentity.status !== 'ACTIVE') {
+      throw new Error('ACCOUNT_INACTIVE: Microsoft identity is no longer active in the authorized directory snapshot.');
+    }
     const studentUser = await db.select().from(students).where(eq(students.id, studentId)).then((rows) => rows[0]);
     if (!studentUser || studentUser.status !== 'ACTIVE') {
       throw new Error('ACCOUNT_INACTIVE: Student account is inactive or not found.');

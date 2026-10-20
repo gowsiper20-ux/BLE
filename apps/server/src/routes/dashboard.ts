@@ -7,8 +7,9 @@ import { subjects } from "../db/schema/subjects";
 import { auditLogs } from "../db/schema/audit";
 import { TimetableService } from "../services/timetable.service";
 import { AttendanceSessionService } from "../services/attendance-session.service";
-import { requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireSharedDashboardRead } from "../middlewares/auth.middleware";
 import { eq, and, sql, desc } from "drizzle-orm";
+import { getDateInTimeZone } from "../utils/date";
 
 export const dashboardRoutes = new Hono();
 const timetableService = new TimetableService();
@@ -42,9 +43,9 @@ function formatActionTitle(action: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-dashboardRoutes.get("/stats", requireStaffOrAdmin, async (c) => {
+dashboardRoutes.get("/stats", requireSharedDashboardRead, async (c) => {
   try {
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getDateInTimeZone();
 
     const [
       [classesCountRes],
@@ -80,7 +81,7 @@ dashboardRoutes.get("/stats", requireStaffOrAdmin, async (c) => {
   }
 });
 
-dashboardRoutes.get("/today-timetable", requireStaffOrAdmin, async (c) => {
+dashboardRoutes.get("/today-timetable", requireSharedDashboardRead, async (c) => {
   try {
     const timetable = await timetableService.getTodayTimetable();
     const formatted = timetable.map((t) => ({
@@ -101,7 +102,7 @@ dashboardRoutes.get("/today-timetable", requireStaffOrAdmin, async (c) => {
   }
 });
 
-dashboardRoutes.get("/recent-activity", requireStaffOrAdmin, async (c) => {
+dashboardRoutes.get("/recent-activity", requireSharedDashboardRead, async (c) => {
   try {
     const logs = await db
       .select({
@@ -119,7 +120,7 @@ dashboardRoutes.get("/recent-activity", requireStaffOrAdmin, async (c) => {
       id: log.id,
       action: formatActionTitle(log.action),
       detail: log.description,
-      actor: log.actorName,
+      actor: log.actorName || 'Actor not recorded',
       type: getActionColor(log.action),
       time: formatRelativeTime(new Date(log.createdAt)),
       timestamp: log.createdAt,

@@ -15,7 +15,7 @@ export default function AttendancePage() {
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dateFilter, setDateFilter] = useState<string>(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
   const [statusFilter, setStatusFilter] = useState<string>('');
 
   const navigate = useNavigate();
@@ -83,7 +83,7 @@ export default function AttendancePage() {
       />
 
       <div role="note" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
-        These are stored application attendance records. Their academic source and provenance have not been verified; historical records are retained and are not presented as verified Entra data.
+        These are stored application attendance records. Historical records are retained; this dashboard does not independently verify their source.
       </div>
 
       {stats && (

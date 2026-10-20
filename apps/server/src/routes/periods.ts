@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { PeriodService } from "../services/period.service";
-import { requireRole, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireRole, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 
 export const periodRoutes = new Hono();
 const service = new PeriodService();
 
-periodRoutes.get("/", requireStaffOrAdmin, async (c) => {
+periodRoutes.get("/", requireSharedDashboardRead, async (c) => {
   try {
     const data = await service.getPeriods();
     return c.json({ success: true, data });

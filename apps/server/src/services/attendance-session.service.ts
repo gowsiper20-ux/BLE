@@ -5,6 +5,7 @@ import { StaffRepository } from '../repositories/staff.repository';
 import { PeriodRepository } from '../repositories/period.repository';
 import { AuditService } from './audit.service';
 import type { AuditActor } from './staff.service';
+import { getDateInTimeZone, getWeekdayInTimeZone } from '../utils/date';
 
 // Start window: 10 mins before period starts
 const ATTENDANCE_START_EARLY_MINUTES = parseInt(process.env.ATTENDANCE_START_EARLY_MINUTES || '10', 10);
@@ -18,9 +19,10 @@ export class AttendanceSessionService {
   private audit = new AuditService();
 
   private getDayName(dateStr: string) {
-    const d = new Date(dateStr);
-    const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-    return days[d.getDay()];
+    return new Date(`${dateStr}T12:00:00.000Z`).toLocaleDateString('en-US', {
+      timeZone: 'UTC',
+      weekday: 'long',
+    }).toUpperCase();
   }
 
   private timeToMinutes(timeStr: string) {
@@ -54,9 +56,15 @@ export class AttendanceSessionService {
     if (!period || period.status !== 'ACTIVE') throw new Error("PERIOD_INACTIVE");
 
     const now = new Date();
-    // Assuming dateStr is today for accurate time checking.
-    // In production we should timezone handle this.
-    const currentMins = now.getHours() * 60 + now.getMinutes();
+    if (dateStr !== getDateInTimeZone(now)) throw new Error("SESSION_DATE_MUST_BE_TODAY");
+    const timeParts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(now);
+    const currentMins = Number(timeParts.find((part) => part.type === 'hour')?.value) * 60
+      + Number(timeParts.find((part) => part.type === 'minute')?.value);
     const startMins = this.timeToMinutes(period.startTime);
     const endMins = this.timeToMinutes(period.endTime);
 
@@ -157,8 +165,10 @@ export class AttendanceSessionService {
   }
 
   async getStats(dateStr: string) {
-    const sessions = await this.repo.findAll({ date: dateStr });
-    let scheduled = 0; // We need to calculate this from timetables for the day
+    const [sessions, timetableStats] = await Promise.all([
+      this.repo.findAll({ date: dateStr }),
+      this.timetableRepo.getTimetableStats(undefined, new Date(`${dateStr}T12:00:00.000Z`)),
+    ]);
     let active = 0;
     let completed = 0;
     let cancelled = 0;
@@ -173,7 +183,7 @@ export class AttendanceSessionService {
 
     return {
       totalToday: sessions.length, // Only created sessions for now
-      scheduledToday: scheduled, 
+      scheduledToday: timetableStats.todayEntries,
       activeToday: active,
       completedToday: completed,
       cancelledToday: cancelled,

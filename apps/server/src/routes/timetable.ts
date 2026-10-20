@@ -3,14 +3,14 @@ import { TimetableService } from "../services/timetable.service";
 import { TimetableOverrideService } from "../services/timetable-override.service";
 import { db } from "../db";
 import { count, eq } from "drizzle-orm";
-import { requireHodOrAdmin, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 
 export const timetableRoutes = new Hono();
 const service = new TimetableService();
 const overrideService = new TimetableOverrideService();
 
 // --- Overrides ---
-timetableRoutes.get("/overrides", requireStaffOrAdmin, async (c) => {
+timetableRoutes.get("/overrides", requireSharedDashboardRead, async (c) => {
   try {
     const data = await overrideService.getOverrides();
     return c.json({ success: true, data });
@@ -19,7 +19,7 @@ timetableRoutes.get("/overrides", requireStaffOrAdmin, async (c) => {
   }
 });
 
-timetableRoutes.post("/overrides", requireHodOrAdmin, async (c) => {
+timetableRoutes.post("/overrides", requireSharedModuleAccess, async (c) => {
   try {
     const user = c.get("user") as any;
     const body = await c.req.json();
@@ -31,7 +31,7 @@ timetableRoutes.post("/overrides", requireHodOrAdmin, async (c) => {
       }
     }
     const actor = user ? {
-      actorId: user.id,
+      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
       actorName: user.name,
       actorRole: user.roles?.[0] || 'HOD',
       ipAddress: c.req.header('x-forwarded-for') || undefined,
@@ -44,7 +44,7 @@ timetableRoutes.post("/overrides", requireHodOrAdmin, async (c) => {
   }
 });
 
-timetableRoutes.patch("/overrides/:id", requireHodOrAdmin, async (c) => {
+timetableRoutes.patch("/overrides/:id", requireSharedModuleAccess, async (c) => {
   try {
     const user = c.get("user") as any;
     const body = await c.req.json();
@@ -56,7 +56,7 @@ timetableRoutes.patch("/overrides/:id", requireHodOrAdmin, async (c) => {
       }
     }
     const actor = user ? {
-      actorId: user.id,
+      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
       actorName: user.name,
       actorRole: user.roles?.[0] || 'HOD',
       ipAddress: c.req.header('x-forwarded-for') || undefined,
@@ -69,11 +69,11 @@ timetableRoutes.patch("/overrides/:id", requireHodOrAdmin, async (c) => {
   }
 });
 
-timetableRoutes.delete("/overrides/:id", requireHodOrAdmin, async (c) => {
+timetableRoutes.delete("/overrides/:id", requireSharedModuleAccess, async (c) => {
   try {
     const user = c.get("user") as any;
     const actor = user ? {
-      actorId: user.id,
+      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
       actorName: user.name,
       actorRole: user.roles?.[0] || 'HOD',
       ipAddress: c.req.header('x-forwarded-for') || undefined,
@@ -88,7 +88,7 @@ timetableRoutes.delete("/overrides/:id", requireHodOrAdmin, async (c) => {
 
 // --- Core Timetable ---
 
-timetableRoutes.get("/", requireStaffOrAdmin, async (c) => {
+timetableRoutes.get("/", requireSharedDashboardRead, async (c) => {
   try {
     const classId = c.req.query("classId");
     const academicYearId = c.req.query("academicYearId");
@@ -109,7 +109,7 @@ timetableRoutes.get("/", requireStaffOrAdmin, async (c) => {
   }
 });
 
-timetableRoutes.post("/", requireHodOrAdmin, async (c) => {
+timetableRoutes.post("/", requireSharedModuleAccess, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.createTimetableEntry(body);
@@ -119,7 +119,7 @@ timetableRoutes.post("/", requireHodOrAdmin, async (c) => {
   }
 });
 
-timetableRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
+timetableRoutes.patch("/:id", requireSharedModuleAccess, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.updateTimetableEntry(c.req.param("id")!, body);
@@ -129,7 +129,7 @@ timetableRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
   }
 });
 
-timetableRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
+timetableRoutes.delete("/:id", requireSharedModuleAccess, async (c) => {
   try {
     await service.deleteTimetableEntry(c.req.param("id")!);
     return c.json({ success: true });
@@ -139,7 +139,7 @@ timetableRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
 });
 
 // --- Additional Routes ---
-timetableRoutes.get("/stats", requireStaffOrAdmin, async (c) => {
+timetableRoutes.get("/stats", requireSharedDashboardRead, async (c) => {
   try {
     const academicYearId = c.req.query("academicYearId");
     const data = await service.getTimetableStats(academicYearId);
@@ -149,7 +149,7 @@ timetableRoutes.get("/stats", requireStaffOrAdmin, async (c) => {
   }
 });
 
-timetableRoutes.get("/today", requireStaffOrAdmin, async (c) => {
+timetableRoutes.get("/today", requireSharedDashboardRead, async (c) => {
   try {
     const academicYearId = c.req.query("academicYearId");
     const classId = c.req.query("classId");

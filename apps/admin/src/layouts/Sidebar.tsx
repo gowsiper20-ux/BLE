@@ -19,7 +19,7 @@ const navigation: NavItem[] = [
     label: 'Academic',
     path: '/academic',
     icon: 'academic',
-    allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF'],
+    allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF', 'FACULTY'],
     children: [
       { label: 'Academic Years', path: '/academic-years' },
       { label: 'Batches', path: '/batches' },
@@ -27,21 +27,21 @@ const navigation: NavItem[] = [
       { label: 'Classes', path: '/classes' },
     ],
   },
-  { label: 'Students', path: '/students', icon: 'students', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF'] },
-  { label: 'Staff', path: '/staff', icon: 'staff', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD'] },
-  { label: 'Subjects', path: '/subjects', icon: 'subjects', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF'] },
+  { label: 'Students', path: '/students', icon: 'students', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF', 'FACULTY'] },
+  { label: 'Staff', path: '/staff', icon: 'staff', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'FACULTY'] },
+  { label: 'Subjects', path: '/subjects', icon: 'subjects', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF', 'FACULTY'] },
   {
     label: 'Timetable',
     path: '/timetable',
     icon: 'timetable',
-    allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF'],
+    allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF', 'FACULTY'],
     children: [
       { label: 'Weekly Timetable', path: '/timetable' },
       { label: 'Overrides', path: '/timetable/overrides' },
     ],
   },
-  { label: 'Attendance', path: '/attendance', icon: 'attendance', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF'] },
-  { label: 'Audit Logs', path: '/audit-logs', icon: 'audit', allowedRoles: ['ADMIN'] },
+  { label: 'Attendance', path: '/attendance', icon: 'attendance', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF', 'FACULTY'] },
+  { label: 'Audit Logs', path: '/audit-logs', icon: 'audit', allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD'] },
   { label: 'Settings', path: '/settings', icon: 'settings', allowedRoles: ['ADMIN'] },
 ];
 

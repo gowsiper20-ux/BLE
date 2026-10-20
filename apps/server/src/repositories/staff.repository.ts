@@ -1,4 +1,4 @@
-import { eq, ilike, and, or, sql } from 'drizzle-orm';
+import { eq, ilike, and, or, sql, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { staff, roles, staffRoles, classCounselors } from '../db/schema/staff';
 import { classes, academicYears } from '../db/schema/academic';
@@ -43,7 +43,6 @@ export class StaffRepository {
         staffCode: staff.staffCode,
         name: staff.name,
         collegeEmail: staff.collegeEmail,
-        microsoftUserId: staff.microsoftUserId,
         status: staff.status,
         roles: sql<string[]>`array_remove(array_agg(${roles.name}), NULL)`,
       })
@@ -84,7 +83,6 @@ export class StaffRepository {
         staffCode: staff.staffCode,
         name: staff.name,
         collegeEmail: staff.collegeEmail,
-        microsoftUserId: staff.microsoftUserId,
         status: staff.status,
         roles: sql<string[]>`array_remove(array_agg(${roles.name}), NULL)`,
       })
@@ -107,8 +105,45 @@ export class StaffRepository {
     return result[0];
   }
 
-  async createStaff(data: typeof staff.$inferInsert) {
-    return db.insert(staff).values(data).returning();
+  async createStaffWithRoles(data: typeof staff.$inferInsert, roleNames: string[]) {
+    return db.transaction(async (tx) => {
+      let roleRecords = await tx.select().from(roles).where(inArray(roles.name, roleNames));
+      if (roleNames.includes('STAFF') && !roleRecords.some((role) => role.name === 'STAFF')) {
+        await tx.insert(roles)
+          .values({ name: 'STAFF', description: 'Faculty and teaching staff' })
+          .onConflictDoNothing();
+        roleRecords = await tx.select().from(roles).where(inArray(roles.name, roleNames));
+      }
+      const missingRole = roleNames.find((roleName) => !roleRecords.some((role) => role.name === roleName));
+      if (missingRole) throw new Error(`Role ${missingRole} does not exist.`);
+
+      const [created] = await tx.insert(staff).values(data).returning();
+      await tx.insert(staffRoles).values(
+        roleRecords.map((role) => ({ staffId: created.id, roleId: role.id })),
+      );
+      return { ...created, roles: roleNames };
+    });
+  }
+
+  async bulkCreateStaffWithConflicts(staffData: (typeof staff.$inferInsert)[]) {
+    return db.transaction(async (tx) => {
+      let staffRole = (await tx.select().from(roles).where(eq(roles.name, 'STAFF')))[0];
+      if (!staffRole) {
+        [staffRole] = await tx.insert(roles).values({ name: 'STAFF', description: 'Faculty and teaching staff' }).returning();
+      }
+      const created: Array<{ index: number; id: string }> = [];
+      for (const [index, staffMember] of staffData.entries()) {
+        const [row] = await tx
+          .insert(staff)
+          .values(staffMember)
+          .onConflictDoNothing()
+          .returning({ id: staff.id });
+        if (!row) continue;
+        await tx.insert(staffRoles).values({ staffId: row.id, roleId: staffRole.id }).onConflictDoNothing();
+        created.push({ index, id: row.id });
+      }
+      return created;
+    });
   }
 
   async updateStaff(id: string, data: Partial<typeof staff.$inferInsert>) {

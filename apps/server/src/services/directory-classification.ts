@@ -1,7 +1,7 @@
 export type DirectoryClassification = 'IT_STUDENT' | 'IT_FACULTY_STAFF' | 'UNCLASSIFIED' | 'CONFLICT';
 
 export interface DirectoryGroupConfiguration {
-  membershipMode: 'direct' | null;
+  membershipMode: 'direct' | 'transitive' | null;
   itStudentGroupIds: string[];
   itStaffGroupIds: string[];
 }
@@ -21,12 +21,12 @@ function parseGroupIds(settingName: string): string[] {
 
 export function getDirectoryGroupConfiguration(): DirectoryGroupConfiguration {
   const requestedMode = process.env.MICROSOFT_GROUP_MEMBERSHIP_MODE?.trim().toLowerCase();
-  if (requestedMode && requestedMode !== 'direct') {
-    throw new Error('CONFIG_ERROR: Only explicitly approved direct group membership is supported.');
+  if (requestedMode && requestedMode !== 'direct' && requestedMode !== 'transitive') {
+    throw new Error('CONFIG_ERROR: MICROSOFT_GROUP_MEMBERSHIP_MODE must be direct or transitive.');
   }
 
   return {
-    membershipMode: requestedMode === 'direct' ? 'direct' : null,
+    membershipMode: requestedMode === 'direct' || requestedMode === 'transitive' ? requestedMode : null,
     itStudentGroupIds: parseGroupIds('MICROSOFT_IT_STUDENT_GROUP_IDS'),
     itStaffGroupIds: parseGroupIds('MICROSOFT_IT_STAFF_GROUP_IDS'),
   };

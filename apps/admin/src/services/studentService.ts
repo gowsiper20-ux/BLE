@@ -1,67 +1,79 @@
 import api from './api';
-export interface DirectoryStudent {
-  id: string;
-  displayName: string | null;
-  email: string | null;
-  department: string | null;
-  academicBatch: string | null;
-  academicClass: string | null;
-  accountEnabled: boolean | null;
-  lastSyncedAt: string;
+import type { Student } from '../types';
+
+export interface StudentImportRow {
+  rowNumber: number;
+  registerNumber: string;
+  name: string;
+  collegeEmail: string;
+  className: string;
+  classId: string | null;
+  isValid: boolean;
+  errors: Array<{ code: string; message: string }>;
 }
 
-export interface DirectoryStudentResult {
-  identities: DirectoryStudent[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
-  filters: { batches: string[]; classes: string[] };
-  classificationConfigured: boolean;
-  academicAttributesConfigured: boolean;
-  batchAttributeConfigured: boolean;
-  classAttributeConfigured: boolean;
+export interface StudentImportPreview {
+  totalRows: number;
+  valid: number;
+  errors: number;
+  data: StudentImportRow[];
 }
 
-class StudentService {
-  async getDirectoryStudents(params: {
+export interface StudentImportResult {
+  total: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  rows: Array<{ rowNumber: number; status: 'created' | 'skipped'; errors: Array<{ code: string; message: string }> }>;
+}
+
+export const studentService = {
+  async getStudents(params: {
     search?: string;
-    academicBatch?: string;
-    academicClass?: string;
-    accountStatus?: string;
+    classId?: string;
+    batchId?: string;
+    status?: string;
     page?: number;
     limit?: number;
-    sortBy?: string;
-    sortOrder?: string;
   }) {
     const query = new URLSearchParams();
-    if (params.search) query.append('search', params.search);
-    if (params.academicBatch) query.append('academicBatch', params.academicBatch);
-    if (params.academicClass) query.append('academicClass', params.academicClass);
-    if (params.accountStatus) query.append('accountStatus', params.accountStatus);
-    if (params.page) query.append('page', params.page.toString());
-    if (params.limit) query.append('limit', params.limit.toString());
-    if (params.sortBy) query.append('sortBy', params.sortBy);
-    if (params.sortOrder) query.append('sortOrder', params.sortOrder);
-    const res = await api.get<{ data: DirectoryStudentResult }>(`/api/auth/directory-students?${query.toString()}`);
-    return res.data;
-  }
+    for (const [key, value] of Object.entries(params)) {
+      if (value) query.set(key, String(value));
+    }
+    const response = await api.get<{ data: { students: Student[]; pagination: { page: number; limit: number; total: number; totalPages: number } } }>(
+      `/api/students?${query.toString()}`,
+    );
+    return response.data;
+  },
 
-  async getDirectoryStaff(params: {
-    search?: string;
-    accountStatus?: string;
-    page?: number;
-    limit?: number;
-    sortBy?: string;
-    sortOrder?: string;
-  }) {
-    const query = new URLSearchParams();
-    if (params.search) query.append('search', params.search);
-    if (params.accountStatus) query.append('accountStatus', params.accountStatus);
-    if (params.page) query.append('page', params.page.toString());
-    if (params.limit) query.append('limit', params.limit.toString());
-    if (params.sortBy) query.append('sortBy', params.sortBy);
-    if (params.sortOrder) query.append('sortOrder', params.sortOrder);
-    const res = await api.get<{ data: DirectoryStudentResult }>(`/api/auth/directory-staff?${query.toString()}`);
-    return res.data;
-  }
-}
+  async createStudent(data: Pick<Student, 'registerNumber' | 'name' | 'collegeEmail' | 'classId'>) {
+    const response = await api.post<{ data: Student }>('/api/students', data);
+    return response.data;
+  },
 
-export const studentService = new StudentService();
+  async updateStudent(id: string, data: Partial<Pick<Student, 'registerNumber' | 'name' | 'collegeEmail' | 'classId'>>) {
+    const response = await api.put<{ data: Student }>(`/api/students/${id}`, data);
+    return response.data;
+  },
+
+  async updateStudentStatus(id: string, status: Student['status']) {
+    const response = await api.patch<{ data: Student }>(`/api/students/${id}/status`, { status });
+    return response.data;
+  },
+
+  async previewImport(file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.postForm<{ data: StudentImportPreview }>('/api/students/import/preview', form);
+    return response.data;
+  },
+
+  async confirmImport(file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.postForm<{ data: StudentImportResult }>('/api/students/import/confirm', form);
+    return response.data;
+  },
+
+  downloadTemplate: () => api.download('/api/students/import/template'),
+};

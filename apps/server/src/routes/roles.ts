@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { StaffService } from "../services/staff.service";
-import { requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireSharedDashboardRead } from "../middlewares/auth.middleware";
 
 export const roleRoutes = new Hono();
 const service = new StaffService();
 
-roleRoutes.get("/", requireStaffOrAdmin, async (c) => {
+roleRoutes.get("/", requireSharedDashboardRead, async (c) => {
   try {
     const data = await service.getRoles();
     return c.json({ success: true, data });

@@ -3,7 +3,7 @@
 // ============================================
 
 // --- Roles ---
-export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF' | 'STUDENT';
+export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF' | 'FACULTY' | 'STUDENT';
 
 export interface AuthPrincipal {
   id: string;

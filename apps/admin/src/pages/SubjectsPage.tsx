@@ -185,7 +185,7 @@ export default function SubjectsPage() {
       />
 
       <div role="note" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
-        Existing legacy subject rows are retained for historical references but are hidden until re-entered as manual data. Add subjects using values confirmed by your college; manual entry is not represented as an Entra or official-system verification.
+        Existing legacy subject rows are retained for historical references. Add subjects using values confirmed by your college; manual entry is not represented as verification from an external official system.
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', backgroundColor: 'var(--bg-surface)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
