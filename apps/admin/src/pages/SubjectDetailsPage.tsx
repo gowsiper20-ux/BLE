@@ -16,6 +16,7 @@ export default function SubjectDetailsPage() {
   const [subject, setSubject] = useState<Subject | null>(null);
   const [classes, setClasses] = useState<ClassSubject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -27,8 +28,11 @@ export default function SubjectDetailsPage() {
       ]);
       setSubject(subjectData);
       setClasses(classData);
-    } catch {
-      showToast('error', 'Failed to fetch subject details');
+      setLoadError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch subject details.';
+      setLoadError(message);
+      showToast('error', message);
     } finally {
       setLoading(false);
     }
@@ -52,7 +56,7 @@ export default function SubjectDetailsPage() {
   }
 
   if (!subject) {
-    return <div>Subject not found.</div>;
+    return <div role={loadError ? 'alert' : undefined}>{loadError || 'Subject not found.'}</div>;
   }
 
   return (
@@ -72,15 +76,9 @@ export default function SubjectDetailsPage() {
             <Icon name="academic" size={20} />
             Subject Information
           </h3>
-          {subject.dataSource === 'LEGACY_UNVERIFIED' && (
-            <div role="note" style={{ marginBottom: '16px', padding: '10px 12px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
-              This is a preserved legacy subject record. Its details have not been verified and it cannot be edited, assigned to new classes, or deleted.
-            </div>
-          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div><strong>Code:</strong> {subject.code}</div>
             <div><strong>Name:</strong> {subject.name}</div>
-            <div><strong>Entry source:</strong> {subject.dataSource === 'MANUALLY_ENTERED' ? 'Manual entry' : 'Legacy — unverified'}</div>
             <div><strong>Description:</strong> {subject.description || 'N/A'}</div>
             <div><strong>Type:</strong> <Badge variant="default">{subject.subjectType}</Badge></div>
             <div><strong>Year Level:</strong> {['I', 'II', 'III', 'IV'][subject.yearNumber - 1] || subject.yearNumber}</div>

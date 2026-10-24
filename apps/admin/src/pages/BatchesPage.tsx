@@ -27,7 +27,7 @@ const EMPTY_FORM: BatchForm = { name: '', startYear: '', endYear: '', department
 
 export default function BatchesPage() {
   const { data: batchResponse, loading, error, refetch } = useApi<ApiResponse<Batch[]>>('/api/batches');
-  const { data: departmentsResponse } = useApi<ApiResponse<DepartmentOption[]>>('/api/departments');
+  const { data: departmentsResponse, error: departmentsError } = useApi<ApiResponse<DepartmentOption[]>>('/api/departments');
   const [form, setForm] = useState<BatchForm>(EMPTY_FORM);
   const [editing, setEditing] = useState<Batch | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -97,6 +97,7 @@ export default function BatchesPage() {
       />
       {notice && <div role="status">{notice}</div>}
       {error && <div role="alert">Batches could not be loaded: {error.message || 'Request failed.'}</div>}
+      {departmentsError && <div role="alert">Departments could not be loaded; batch creation is unavailable: {departmentsError.message || 'Request failed.'}</div>}
       {formOpen && (
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 20, background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8 }}>
           <h2>{editing ? 'Edit Batch' : 'Add Batch'}</h2>

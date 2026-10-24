@@ -30,6 +30,20 @@ export const facultyAuthAccounts = pgTable('faculty_auth_accounts', {
     accountStatusCheck: check('faculty_auth_accounts_status_check', sql`${table.status} in ('ACTIVE', 'INACTIVE')`),
 }));
 
+export const staffApprovalRequests = pgTable('staff_approval_requests', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
+    email: varchar('email', { length: 254 }).notNull().unique(),
+    staffCode: varchar('staff_code', { length: 50 }),
+    department: varchar('department', { length: 100 }).default('Information Technology'),
+    designation: varchar('designation', { length: 100 }).default('Assistant Professor'),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('PENDING'),
+    rejectionReason: text('rejection_reason'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const externalIdentities = pgTable('external_identities', {
     id: uuid('id').defaultRandom().primaryKey(),
     staffId: uuid('staff_id').references(() => staff.id),

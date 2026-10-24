@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import PageHeader from '../components/PageHeader';
-import DataTable from '../components/DataTable';
 import Badge from '../components/Badge';
 import SearchBar from '../components/SearchBar';
 import Select from '../components/Select';
+import Modal from '../components/Modal';
+import Icon from '../components/Icon';
+import BulkImportModal from '../components/BulkImportModal';
 import { academicService } from '../services/academicService';
-import { studentService, type StudentImportPreview, type StudentImportResult } from '../services/studentService';
+import { studentService } from '../services/studentService';
 import type { Student } from '../types';
 import './StudentsPage.css';
 
@@ -23,7 +25,6 @@ interface StudentFormData {
   classId: string;
 }
 
-const PAGE_SIZE = 20;
 const EMPTY_FORM: StudentFormData = { registerNumber: '', name: '', collegeEmail: '', classId: '' };
 
 function errorMessage(error: unknown): string {
@@ -32,26 +33,11 @@ function errorMessage(error: unknown): string {
     : 'The request failed. Please retry.';
 }
 
-function downloadErrorReport(rows: Array<{ rowNumber: number; status?: string; errors: Array<{ message: string }> }>) {
-  const quote = (value: string) => {
-    const safeValue = /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
-    return `"${safeValue.replace(/"/g, '""')}"`;
-  };
-  const csv = [
-    ['row_number', 'status', 'errors'],
-    ...rows.map((row) => [String(row.rowNumber), row.status || 'invalid', row.errors.map((item) => item.message).join('; ')]),
-  ].map((row) => row.map(quote).join(',')).join('\r\n');
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  link.download = 'student-import-errors.csv';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 0);
-}
-
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -59,15 +45,14 @@ export default function StudentsPage() {
   const [search, setSearch] = useState('');
   const [classId, setClassId] = useState('');
   const [status, setStatus] = useState('');
+  const [isCompact, setIsCompact] = useState(false);
+
+  // Modals
   const [formOpen, setFormOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
   const [form, setForm] = useState<StudentFormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<StudentImportPreview | null>(null);
-  const [importResult, setImportResult] = useState<StudentImportResult | null>(null);
-  const [importBusy, setImportBusy] = useState(false);
-  const [importError, setImportError] = useState('');
 
   const fetchStudents = useCallback(async () => {
     setLoading(true);
@@ -78,7 +63,7 @@ export default function StudentsPage() {
         classId,
         status,
         page,
-        limit: PAGE_SIZE,
+        limit: pageSize,
       });
       setStudents(result.students);
       setTotal(result.pagination.total);
@@ -89,7 +74,7 @@ export default function StudentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, classId, status, page]);
+  }, [search, classId, status, page, pageSize]);
 
   useEffect(() => {
     void fetchStudents();
@@ -117,12 +102,17 @@ export default function StudentsPage() {
     setError('');
     setMessage('');
     try {
-      if (editing) await studentService.updateStudent(editing.id, form);
-      else await studentService.createStudent(form);
-      setMessage(editing ? 'Student details updated.' : 'Student registered.');
+      if (editing) {
+        await studentService.updateStudent(editing.id, form);
+        setMessage(`Student ${form.name} updated successfully.`);
+      } else {
+        await studentService.createStudent(form);
+        setMessage(`Student ${form.name} registered successfully.`);
+      }
       setFormOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
+      // Immediately refresh student directory!
       await fetchStudents();
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -137,193 +127,364 @@ export default function StudentsPage() {
     try {
       const nextStatus = student.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
       await studentService.updateStudentStatus(student.id, nextStatus);
-      setMessage(`Student status changed to ${nextStatus}.`);
+      setMessage(`Status updated to ${nextStatus} for ${student.name}.`);
       await fetchStudents();
     } catch (requestError) {
       setError(errorMessage(requestError));
     }
   };
 
-  const previewFile = async () => {
-    if (!file) return;
-    setImportBusy(true);
-    setImportError('');
-    setImportResult(null);
-    try {
-      setPreview(await studentService.previewImport(file));
-    } catch (requestError) {
-      setPreview(null);
-      setImportError(errorMessage(requestError));
-    } finally {
-      setImportBusy(false);
-    }
-  };
-
-  const confirmImport = async () => {
-    if (!file || !preview) return;
-    setImportBusy(true);
-    setImportError('');
-    try {
-      const result = await studentService.confirmImport(file);
-      setImportResult(result);
-      setPreview(null);
-      setFile(null);
-      setMessage(`Import finished: ${result.created} created, ${result.skipped} skipped, ${result.failed} failed.`);
-      await fetchStudents();
-    } catch (requestError) {
-      setImportError(errorMessage(requestError));
-    } finally {
-      setImportBusy(false);
-    }
-  };
-
-  const downloadTemplate = async () => {
-    setImportError('');
-    try {
-      const blob = await studentService.downloadTemplate();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'student-import-template.csv';
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    } catch (requestError) {
-      setImportError(errorMessage(requestError));
-    }
-  };
-
-  const columns = [
-    { key: 'registerNumber', label: 'Register Number', sortable: true },
-    { key: 'name', label: 'Name', sortable: true },
-    { key: 'collegeEmail', label: 'College Email' },
-    { key: 'className', label: 'Class' },
-    { key: 'batchName', label: 'Batch' },
-    {
-      key: 'status',
-      label: 'Status',
-      render: (value: unknown) => <Badge variant={value === 'ACTIVE' ? 'success' : 'default'}>{String(value)}</Badge>,
-    },
-  ];
+  const totalPages = Math.ceil(total / pageSize) || 1;
 
   return (
     <div className="students-page">
-      <PageHeader
-        title="Students"
-        breadcrumbs={[{ label: 'Home', path: '/dashboard' }, { label: 'Students' }]}
-      />
+      {/* Page Header */}
+      <div className="students-page__header-row">
+        <div>
+          <PageHeader
+            title="Students Directory"
+            breadcrumbs={[{ label: 'Home', path: '/dashboard' }, { label: 'Students' }]}
+          />
+        </div>
+        <div className="students-page__header-actions">
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={() => setImportModalOpen(true)}
+          >
+            <Icon name="upload" size={16} />
+            <span>Bulk Import Excel / CSV</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => openForm()}
+          >
+            <Icon name="add" size={16} />
+            <span>Add Student</span>
+          </button>
+        </div>
+      </div>
 
-      {message && <div role="status" className="students-page__notice">{message}</div>}
+      {/* Notices */}
+      {message && (
+        <div role="status" className="students-page__notice">
+          <Icon name="check" size={16} />
+          <span>{message}</span>
+          <button type="button" className="notice-dismiss" onClick={() => setMessage('')}>×</button>
+        </div>
+      )}
       {error && (
         <div role="alert" className="students-page__error">
-          {error} <button type="button" onClick={() => void fetchStudents()}>Retry</button>
+          <Icon name="error" size={16} />
+          <span>{error}</span>
+          <button type="button" onClick={() => void fetchStudents()}>Retry</button>
         </div>
       )}
 
-      <div className="students-page__toolbar">
-        <button type="button" onClick={() => openForm()}>Add Student</button>
-        <button type="button" className="students-page__secondary" onClick={() => document.getElementById('student-import-title')?.scrollIntoView({ behavior: 'smooth' })}>
-          Import Students
-        </button>
+      {/* Filters & View Controls Bar */}
+      <div className="students-page__controls-bar">
+        <div className="students-page__search-wrap">
+          <SearchBar
+            placeholder="Search by register number or student name..."
+            value={search}
+            onChange={(value) => { setSearch(value); setPage(1); }}
+          />
+        </div>
+
+        <div className="students-page__filters-group">
+          <Select
+            label="Class"
+            value={classId}
+            onChange={(value) => { setClassId(value); setPage(1); }}
+            options={[{ value: '', label: 'All classes' }, ...classes.map((item) => ({ value: item.id, label: item.name }))]}
+          />
+          <Select
+            label="Status"
+            value={status}
+            onChange={(value) => { setStatus(value); setPage(1); }}
+            options={[
+              { value: '', label: 'All statuses' },
+              { value: 'ACTIVE', label: 'Active' },
+              { value: 'INACTIVE', label: 'Inactive' },
+              { value: 'GRADUATED', label: 'Graduated' },
+              { value: 'SUSPENDED', label: 'Suspended' },
+            ]}
+          />
+          <div className="students-page__view-toggles">
+            <button
+              type="button"
+              className={`view-toggle-btn ${isCompact ? 'view-toggle-btn--active' : ''}`}
+              onClick={() => setIsCompact((c) => !c)}
+              title={isCompact ? 'Switch to comfortable view' : 'Switch to compact view (best for 100+ students)'}
+            >
+              {isCompact ? 'Compact View' : 'Comfortable'}
+            </button>
+          </div>
+        </div>
       </div>
 
-      {formOpen && (
-        <form className="students-page__panel" onSubmit={submitForm}>
-          <h2>{editing ? 'Edit Student' : 'Add Student'}</h2>
-          <div className="students-page__form-grid">
-            <label>Register number<input required maxLength={50} value={form.registerNumber} onChange={(event) => setForm({ ...form, registerNumber: event.target.value })} /></label>
-            <label>Full name<input required maxLength={255} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-            <label>College email<input required type="email" maxLength={255} value={form.collegeEmail} onChange={(event) => setForm({ ...form, collegeEmail: event.target.value })} /></label>
-            <label>Class
-              <select required value={form.classId} onChange={(event) => setForm({ ...form, classId: event.target.value })}>
-                <option value="">Select an existing class</option>
-                {classes.map((item) => <option key={item.id} value={item.id}>{item.name}{item.batchName ? ` · ${item.batchName}` : ''}</option>)}
+      {/* Main Table Container with Sticky Headers & Internal Scroll */}
+      <div className="students-page__table-wrapper">
+        <div className={`students-table-scroll ${isCompact ? 'students-table-scroll--compact' : ''}`}>
+          <table className="students-table">
+            <thead>
+              <tr>
+                <th style={{ width: '160px' }}>Register Number</th>
+                <th>Student Name</th>
+                <th>College Email</th>
+                <th style={{ width: '130px' }}>Class</th>
+                <th style={{ width: '120px' }}>Batch</th>
+                <th style={{ width: '110px' }}>Status</th>
+                <th style={{ width: '160px', textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="students-table__loading-cell">
+                    <div className="table-spinner" />
+                    <span>Loading student records...</span>
+                  </td>
+                </tr>
+              ) : students.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="students-table__empty-cell">
+                    <div className="students-empty-state">
+                      <div className="empty-state-icon">
+                        <Icon name="students" size={40} />
+                      </div>
+                      <h3>No Student Records</h3>
+                      <p>
+                        {search || classId || status
+                          ? 'No students matched the active search filters.'
+                          : 'The student roster is currently empty. Upload your class Excel or register students to begin.'}
+                      </p>
+                      <div className="empty-state-actions">
+                        <button
+                          type="button"
+                          className="btn btn--primary"
+                          onClick={() => setImportModalOpen(true)}
+                        >
+                          <Icon name="upload" size={16} />
+                          <span>Bulk Import Excel</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--secondary"
+                          onClick={() => openForm()}
+                        >
+                          <Icon name="add" size={16} />
+                          <span>Add Single Student</span>
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                students.map((student) => (
+                  <tr key={student.id} className="student-row">
+                    <td>
+                      <span className="student-regno-badge">
+                        {student.registerNumber}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="student-name-cell">
+                        <div className="student-avatar-initials">
+                          {student.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span className="student-name-text">{student.name}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="student-email-text">{student.collegeEmail}</span>
+                    </td>
+                    <td>
+                      <span className="student-class-badge">{student.className || '-'}</span>
+                    </td>
+                    <td>
+                      <span className="student-batch-badge">{student.batchName || '-'}</span>
+                    </td>
+                    <td>
+                      <Badge variant={student.status === 'ACTIVE' ? 'success' : 'default'}>
+                        {student.status}
+                      </Badge>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div className="student-row-actions">
+                        <button
+                          type="button"
+                          className="action-btn action-btn--edit"
+                          onClick={() => openForm(student)}
+                          title="Edit Student Details"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className={`action-btn ${student.status === 'ACTIVE' ? 'action-btn--deactivate' : 'action-btn--activate'}`}
+                          onClick={() => void toggleStatus(student)}
+                        >
+                          {student.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Enhanced Pagination & Page Size Control */}
+        <div className="students-page__pagination-bar">
+          <div className="pagination-info">
+            <span>
+              Showing {students.length > 0 ? (page - 1) * pageSize + 1 : 0} to{' '}
+              {Math.min(page * pageSize, total)} of <strong>{total}</strong> students
+            </span>
+            <div className="page-size-selector">
+              <label htmlFor="student-pagesize">Rows per page:</label>
+              <select
+                id="student-pagesize"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
               </select>
-            </label>
+            </div>
           </div>
-          {classes.length === 0 && <p role="note">No active classes are configured. Configure a real class before adding students.</p>}
-          <div className="students-page__form-actions">
-            <button type="submit" disabled={saving || classes.length === 0}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create student'}</button>
-            <button type="button" className="students-page__secondary" onClick={() => setFormOpen(false)} disabled={saving}>Cancel</button>
+
+          <div className="pagination-controls">
+            <button
+              type="button"
+              className="pagination-btn"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || loading}
+            >
+              <Icon name="chevron-left" size={16} />
+              <span>Previous</span>
+            </button>
+            <span className="pagination-current-page">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              className="pagination-btn"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
+            >
+              <span>Next</span>
+              <Icon name="chevron-right" size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Add / Edit Student Modal */}
+      <Modal
+        isOpen={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editing ? 'Edit Student Details' : 'Register New Student'}
+        size="md"
+      >
+        <form onSubmit={submitForm} className="student-form-modal">
+          <div className="student-form-grid">
+            <div className="form-group">
+              <label htmlFor="form-regno">Register Number *</label>
+              <input
+                id="form-regno"
+                required
+                maxLength={50}
+                placeholder="e.g. 61782324106001"
+                value={form.registerNumber}
+                onChange={(e) => setForm({ ...form, registerNumber: e.target.value.toUpperCase() })}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="form-name">Full Name *</label>
+              <input
+                id="form-name"
+                required
+                maxLength={255}
+                placeholder="e.g. Anandha Kumar S"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="form-email">College Email *</label>
+              <input
+                id="form-email"
+                required
+                type="email"
+                maxLength={255}
+                placeholder="e.g. anand.23it@sonatech.ac.in"
+                value={form.collegeEmail}
+                onChange={(e) => setForm({ ...form, collegeEmail: e.target.value.toLowerCase() })}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="form-class">Assigned Class *</label>
+              <select
+                id="form-class"
+                required
+                value={form.classId}
+                onChange={(e) => setForm({ ...form, classId: e.target.value })}
+              >
+                <option value="">Select Class</option>
+                {classes.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} {item.batchName ? `(${item.batchName})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="student-form-actions">
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => setFormOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn--primary"
+              disabled={saving || classes.length === 0}
+            >
+              {saving ? 'Saving...' : editing ? 'Save Changes' : 'Register Student'}
+            </button>
           </div>
         </form>
-      )}
+      </Modal>
 
-      <section className="students-page__panel" aria-labelledby="student-import-title">
-        <h2 id="student-import-title">Bulk import students</h2>
-        <p>Use the blank CSV template with columns <code>register_number, name, college_email, class_id</code>. Choose an existing class ID; imports create records only and never overwrite existing students.</p>
-        <div className="students-page__import-actions">
-          <button type="button" className="students-page__secondary" onClick={() => void downloadTemplate()}>Download Student Template</button>
-          <label className="students-page__file-label">CSV or XLSX file
-            <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => {
-              setFile(event.target.files?.[0] || null);
-              setPreview(null);
-              setImportResult(null);
-              setImportError('');
-            }} />
-          </label>
-          <button type="button" onClick={() => void previewFile()} disabled={!file || importBusy}>{importBusy ? 'Validating…' : 'Preview and validate'}</button>
-        </div>
-        {importError && <div className="students-page__error" role="alert">{importError}</div>}
-        {preview && (
-          <div className="students-page__preview">
-            <p><strong>{preview.totalRows}</strong> rows · <strong>{preview.valid}</strong> valid · <strong>{preview.errors}</strong> invalid</p>
-            <div className="students-page__preview-table">
-              <table>
-                <thead><tr><th>Row</th><th>Register number</th><th>Name</th><th>Email</th><th>Class</th><th>Validation</th></tr></thead>
-                <tbody>{preview.data.map((row) => (
-                  <tr key={row.rowNumber}>
-                    <td>{row.rowNumber}</td><td>{row.registerNumber}</td><td>{row.name}</td><td>{row.collegeEmail}</td><td>{row.className}</td>
-                    <td>{row.isValid ? 'Valid' : row.errors.map((item) => item.message).join('; ')}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-            <div className="students-page__form-actions">
-              <button type="button" onClick={() => void confirmImport()} disabled={importBusy || preview.totalRows === 0}>
-                {importBusy ? 'Importing…' : 'Confirm import'}
-              </button>
-              <button type="button" className="students-page__secondary" onClick={() => { setFile(null); setPreview(null); }} disabled={importBusy}>Cancel import</button>
-              {preview.errors > 0 && <button type="button" className="students-page__secondary" onClick={() => downloadErrorReport(preview.data.filter((row) => !row.isValid).map((row) => ({ rowNumber: row.rowNumber, errors: row.errors })))}>Download validation report</button>}
-            </div>
-          </div>
-        )}
-        {importResult && (
-          <div role="status" className="students-page__import-result">
-            <p>{importResult.total} rows: {importResult.created} created, {importResult.skipped} skipped, {importResult.failed} failed.</p>
-            {importResult.rows.some((row) => row.errors.length > 0) && (
-              <button type="button" className="students-page__secondary" onClick={() => downloadErrorReport(importResult.rows.filter((row) => row.errors.length > 0))}>Download error report</button>
-            )}
-          </div>
-        )}
-      </section>
-
-      <div className="students-page__filters">
-        <SearchBar placeholder="Search register number or name..." value={search} onChange={(value) => { setSearch(value); setPage(1); }} />
-        <div className="students-page__filter-group">
-          <Select label="Class" value={classId} onChange={(value) => { setClassId(value); setPage(1); }} options={[{ value: '', label: 'All classes' }, ...classes.map((item) => ({ value: item.id, label: item.name }))]} />
-          <Select label="Status" value={status} onChange={(value) => { setStatus(value); setPage(1); }} options={[{ value: '', label: 'All statuses' }, { value: 'ACTIVE', label: 'Active' }, { value: 'INACTIVE', label: 'Inactive' }, { value: 'GRADUATED', label: 'Graduated' }, { value: 'SUSPENDED', label: 'Suspended' }]} />
-        </div>
-      </div>
-
-      <div className="students-page__content">
-        <DataTable
-          columns={columns}
-          data={students}
-          keyField="id"
-          loading={loading}
-          emptyMessage={error ? 'Student records could not be loaded.' : students.length === 0 && !search && !classId && !status ? 'No student records are available. Add a student or import an existing class roster.' : 'No student records match these filters.'}
-          page={page}
-          pageSize={PAGE_SIZE}
-          total={total}
-          onPageChange={setPage}
-          actions={(student) => (
-            <div className="students-page__row-actions">
-              <button type="button" onClick={() => openForm(student)}>Edit</button>
-              <button type="button" onClick={() => void toggleStatus(student)}>{student.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</button>
-            </div>
-          )}
-        />
-      </div>
+      {/* Modern Bulk Import Modal */}
+      <BulkImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        title="Bulk Import Students Roster"
+        entityName="students"
+        sampleTemplateName="student-import-template.csv"
+        columnsNote="Format: register_number, name, college_email, class_id. Supports Excel (.xlsx) and CSV."
+        onDownloadTemplate={() => studentService.downloadTemplate()}
+        onPreview={(file) => studentService.previewImport(file)}
+        onConfirm={(file) => studentService.confirmImport(file)}
+        onSuccess={() => {
+          // Immediately update student page!
+          void fetchStudents();
+        }}
+      />
     </div>
   );
 }

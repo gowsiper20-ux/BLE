@@ -12,7 +12,7 @@ import { useToast } from '../hooks/useToast';
 import type { Regulation, ApiResponse, TableColumn } from '../types';
 
 export default function RegulationsPage() {
-  const { data: response, loading, refetch } = useApi<ApiResponse<Regulation[]>>('/api/regulations');
+  const { data: response, loading, error, refetch } = useApi<ApiResponse<Regulation[]>>('/api/regulations');
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -129,6 +129,12 @@ export default function RegulationsPage() {
         }
       />
 
+      {error && (
+        <div role="alert">
+          Regulations could not be loaded: {error.message || 'Request failed.'}
+          <button type="button" onClick={() => void refetch()}>Retry</button>
+        </div>
+      )}
       <DataTable
         columns={columns}
         data={response?.data || []}
@@ -136,7 +142,7 @@ export default function RegulationsPage() {
         loading={loading}
         onRowClick={(row) => openModal(row)}
         actions={renderActions}
-        emptyMessage="No regulations found."
+        emptyMessage={error ? 'Regulation data is unavailable.' : 'No regulations found.'}
       />
 
       <Modal

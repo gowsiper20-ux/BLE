@@ -3,6 +3,8 @@ import { AcademicRepository } from "../repositories/academic.repository";
 import { AuditService } from "./audit.service";
 import type { AuditActor } from "./staff.service";
 import { SubjectType, subjectTypes } from "../db/schema/subjects";
+import { parseTabularImport } from "./tabular-import";
+import type { Buffer } from "node:buffer";
 
 export class SubjectService {
   private repo: SubjectRepository;
@@ -296,5 +298,153 @@ export class SubjectService {
       ipAddress: actor?.ipAddress,
       userAgent: actor?.userAgent
     });
+  }
+
+  async validateImportFile(fileBuffer: Buffer, fileName: string) {
+    const rows = parseTabularImport(fileBuffer, fileName, {
+      code: 'code',
+      subject_code: 'code',
+      course_code: 'code',
+      name: 'name',
+      subject_name: 'name',
+      course_name: 'name',
+      title: 'name',
+      subject_type: 'subject_type',
+      type: 'subject_type',
+      course_type: 'subject_type',
+      year_number: 'year_number',
+      year: 'year_number',
+      year_of_study: 'year_number',
+      regulation_code: 'regulation_code',
+      regulation: 'regulation_code',
+      regulation_name: 'regulation_code',
+      description: 'description',
+      desc: 'description',
+    }, ['code', 'name', 'subject_type', 'year_number']);
+
+    const regulationsList = await this.academicRepo.getRegulations();
+    const defaultRegulation = regulationsList.find(r => r.name === 'R2023') || regulationsList[0];
+
+    const codeCounts = new Map<string, number>();
+    for (const row of rows) {
+      const code = (row.code || '').trim().toUpperCase();
+      if (code) codeCounts.set(code, (codeCounts.get(code) || 0) + 1);
+    }
+
+    const data = await Promise.all(rows.map(async (row, index) => {
+      const rowNumber = index + 2;
+      const code = (row.code || '').trim().toUpperCase();
+      const name = (row.name || '').trim();
+      const rawType = (row.subject_type || '').trim().toUpperCase();
+      const rawYear = parseInt((row.year_number || '').trim(), 10);
+      const regCode = (row.regulation_code || '').trim();
+      const description = (row.description || '').trim() || undefined;
+
+      const errors: { code: string; message: string }[] = [];
+
+      if (!code) errors.push({ code: 'MISSING_CODE', message: 'Subject code is required.' });
+      else if (code.length < 2 || code.length > 50) errors.push({ code: 'INVALID_CODE', message: 'Subject code must be 2-50 characters.' });
+      else if ((codeCounts.get(code) || 0) > 1) errors.push({ code: 'DUPLICATE_CODE_IN_FILE', message: 'Duplicate subject code within the import file.' });
+
+      if (!name) errors.push({ code: 'MISSING_NAME', message: 'Subject name is required.' });
+      else if (name.length < 3 || name.length > 255) errors.push({ code: 'INVALID_NAME', message: 'Subject name must be 3-255 characters.' });
+
+      if (!rawType || !subjectTypes.includes(rawType as any)) {
+        errors.push({ code: 'INVALID_TYPE', message: `Type must be one of: ${subjectTypes.join(', ')}.` });
+      }
+
+      if (isNaN(rawYear) || rawYear < 1 || rawYear > 4) {
+        errors.push({ code: 'INVALID_YEAR', message: 'Year must be a number between 1 and 4.' });
+      }
+
+      let matchedRegulation = defaultRegulation;
+      if (regCode) {
+        const found = regulationsList.find(r => r.name.toLowerCase() === regCode.toLowerCase());
+        if (found) {
+          matchedRegulation = found;
+        } else {
+          errors.push({ code: 'REGULATION_NOT_FOUND', message: `Regulation "${regCode}" not found.` });
+        }
+      }
+
+      if (code && errors.length === 0) {
+        const existing = await this.repo.findByCode(code);
+        if (existing) {
+          errors.push({ code: 'DUPLICATE_CODE', message: `Subject code "${code}" already exists in the system.` });
+        }
+      }
+
+      return {
+        rowNumber,
+        code,
+        name,
+        subjectType: rawType as SubjectType,
+        yearNumber: rawYear,
+        regulationId: matchedRegulation?.id,
+        regulationName: matchedRegulation?.name,
+        description,
+        isValid: errors.length === 0,
+        errors,
+      };
+    }));
+
+    return {
+      totalRows: data.length,
+      valid: data.filter(d => d.isValid).length,
+      errors: data.filter(d => !d.isValid).length,
+      data,
+    };
+  }
+
+  async confirmImport(fileBuffer: Buffer, fileName: string, actor?: AuditActor) {
+    const preview = await this.validateImportFile(fileBuffer, fileName);
+    const candidates = preview.data.filter(d => d.isValid);
+
+    const createdRows: any[] = [];
+    for (const c of candidates) {
+      try {
+        const created = await this.repo.create({
+          code: c.code,
+          name: c.name,
+          subjectType: c.subjectType,
+          yearNumber: c.yearNumber,
+          regulationId: c.regulationId,
+          description: c.description || null,
+          status: 'ACTIVE',
+          dataSource: 'MANUALLY_ENTERED',
+        });
+        createdRows.push(created);
+      } catch {
+        // Ignored duplicate or conflict
+      }
+    }
+
+    const created = createdRows.length;
+    const skipped = preview.totalRows - created;
+
+    if (actor) {
+      await this.audit.log({
+        actorId: actor.actorId,
+        actorName: actor.actorName,
+        actorRole: actor.actorRole,
+        action: 'BULK_IMPORT_SUBJECTS',
+        entityType: 'SUBJECT',
+        description: `Bulk imported ${created} subjects (${skipped} skipped/failed).`,
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+    }
+
+    return {
+      total: preview.totalRows,
+      created,
+      skipped,
+      failed: preview.errors,
+      rows: preview.data.map(d => ({
+        rowNumber: d.rowNumber,
+        status: d.isValid ? 'created' : 'skipped',
+        errors: d.errors,
+      })),
+    };
   }
 }

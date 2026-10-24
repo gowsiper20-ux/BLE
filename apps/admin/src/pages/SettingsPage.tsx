@@ -25,6 +25,7 @@ export default function SettingsPage() {
 
   // Periods State
   const [periods, setPeriods] = useState<Period[]>([]);
+  const [periodsError, setPeriodsError] = useState<string | null>(null);
   const [periodModalOpen, setPeriodModalOpen] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<Partial<Period> | null>(null);
 
@@ -54,9 +55,14 @@ export default function SettingsPage() {
   const fetchPeriods = async () => {
     try {
       const res = await periodService.getPeriods();
-      if (res.success) setPeriods(res.data || []);
+      if (res.success) {
+        setPeriods(res.data || []);
+        setPeriodsError(null);
+      } else {
+        setPeriodsError('The server did not return period data.');
+      }
     } catch (err) {
-      console.error(err);
+      setPeriodsError(err instanceof Error ? err.message : 'Failed to load periods.');
     }
   };
 
@@ -178,6 +184,7 @@ export default function SettingsPage() {
             {/* PERIODS */}
             {activeTab === 'periods' && (
               <div>
+                {periodsError && <div role="alert">{periodsError}</div>}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                   <h3>Period Management</h3>
                   <Button variant="primary" onClick={() => { setEditingPeriod({ status: 'ACTIVE' }); setPeriodModalOpen(true); }} icon="plus">

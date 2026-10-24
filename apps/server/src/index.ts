@@ -53,6 +53,7 @@ app.use("/api/*", async (c, next) => {
     "/api/auth/student/login",
     "/api/auth/signup-status",
     "/api/auth/signup",
+    "/api/auth/staff-register",
   ];
   
   if (whitelist.includes(path) || path.startsWith("/api/students/me/")) {

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { StaffService } from "../services/staff.service";
 import { TimetableRepository } from "../repositories/timetable.repository";
 import { requireSharedModuleAccess, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { localAuthService } from "../services/local-auth.service";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 import { Buffer } from "node:buffer";
 import type { staff } from "../db/schema/staff";
@@ -106,6 +107,48 @@ staffRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
     const data = await service.confirmImport(upload.buffer, upload.file.name, getActor(c));
     return c.json({ success: true, data });
   } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+// --- Pending Staff Approvals (HOD / Admin Oversight) ---
+staffRoutes.get('/approvals/pending', requireSharedModuleAccess, async (c) => {
+  try {
+    const list = await localAuthService.getPendingStaffRequests();
+    return c.json({ success: true, data: list, count: list.length });
+  } catch (error: any) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.get('/approvals/all', requireSharedModuleAccess, async (c) => {
+  try {
+    const list = await localAuthService.getAllStaffRequests();
+    return c.json({ success: true, data: list, count: list.length });
+  } catch (error: any) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.post('/approvals/:id/approve', requireSharedModuleAccess, async (c) => {
+  try {
+    const id = c.req.param('id');
+    if (!id) return c.json({ success: false, error: { message: 'Missing approval id' } }, 400);
+    const result = await localAuthService.approveStaffRequest(id);
+    return c.json(result);
+  } catch (error: any) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.post('/approvals/:id/reject', requireSharedModuleAccess, async (c) => {
+  try {
+    const id = c.req.param('id');
+    if (!id) return c.json({ success: false, error: { message: 'Missing approval id' } }, 400);
+    const body = await c.req.json().catch(() => ({})) as { reason?: string };
+    const result = await localAuthService.rejectStaffRequest(id, body.reason);
+    return c.json(result);
+  } catch (error: any) {
     return handleStaffError(c, error);
   }
 });

@@ -41,5 +41,22 @@ export const subjectService = {
   deleteSubject: async (id: string) => {
     const res = await api.delete<{ success: boolean }>(`/api/subjects/${id}`);
     return res;
+  },
+
+  // --- Bulk Import ---
+  downloadTemplate: () => api.download('/api/subjects/import/template'),
+
+  previewImport: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await api.postForm<{ data: any }>('/api/subjects/import/preview', form);
+    return res.data;
+  },
+
+  confirmImport: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await api.postForm<{ data: any }>('/api/subjects/import/confirm', form);
+    return res.data;
   }
 };

@@ -10,10 +10,10 @@ export const timetableService = {
 
 
   // Timetables
-  getTimetableByClass: (classId: string, academicYearId: string) => 
-    api.get<ApiResponse<any[]>>(`/api/timetable?classId=${classId}&academicYearId=${academicYearId}`),
-  getTimetableByStaff: (staffId: string, academicYearId: string) => 
-    api.get<ApiResponse<any[]>>(`/api/timetable?staffId=${staffId}&academicYearId=${academicYearId}`),
+  getTimetableByClass: (classId: string, academicYearId?: string) => 
+    api.get<ApiResponse<any[]>>(`/api/timetable?classId=${classId}${academicYearId ? `&academicYearId=${academicYearId}` : ''}`),
+  getTimetableByStaff: (staffId: string, academicYearId?: string) => 
+    api.get<ApiResponse<any[]>>(`/api/timetable?staffId=${staffId}${academicYearId ? `&academicYearId=${academicYearId}` : ''}`),
   createTimetableEntry: (data: any) => api.post<ApiResponse<any>>("/api/timetable", data),
   updateTimetableEntry: (id: string, data: any) => api.patch<ApiResponse<any>>(`/api/timetable/${id}`, data),
   deleteTimetableEntry: (id: string) => api.delete<ApiResponse<any>>(`/api/timetable/${id}`),

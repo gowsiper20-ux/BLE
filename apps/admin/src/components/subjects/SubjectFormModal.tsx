@@ -96,9 +96,6 @@ export default function SubjectFormModal({ isOpen, onClose, onSuccess, subject }
       title={subject ? 'Edit Subject' : 'Add Subject'}
     >
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div role="note" style={{ padding: '10px 12px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00', fontSize: 13 }}>
-          Enter subject details supplied by your college. This records a manual entry; it does not verify the information against an official curriculum system.
-        </div>
         {error && <div style={{ color: 'var(--color-danger)', fontSize: '14px' }}>{error}</div>}
         
         <Input

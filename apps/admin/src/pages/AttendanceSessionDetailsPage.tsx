@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -18,6 +18,9 @@ export default function AttendanceSessionDetailsPage() {
   const [liveData, setLiveData] = useState<LiveAttendanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [bleLoading, setBleLoading] = useState(false);
+  const [sessionError, setSessionError] = useState('');
+  const [liveError, setLiveError] = useState('');
+  const [lastLiveRefresh, setLastLiveRefresh] = useState<Date | null>(null);
 
   // Correction Modal state
   const [selectedStudent, setSelectedStudent] = useState<LiveAttendanceStudent | null>(null);
@@ -25,8 +28,26 @@ export default function AttendanceSessionDetailsPage() {
   const [correctionReason, setCorrectionReason] = useState<string>('');
   const [submittingCorrection, setSubmittingCorrection] = useState(false);
 
-  const navigate = useNavigate();
   const { showToast } = useToast();
+  const liveRequestInFlight = useRef(false);
+
+  const fetchLiveAttendance = useCallback(async () => {
+    if (!id || liveRequestInFlight.current) return;
+    liveRequestInFlight.current = true;
+    try {
+      const res = await attendanceService.getLiveAttendance(id);
+      setLiveData(res.data);
+      setLiveError('');
+      setLastLiveRefresh(new Date());
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+        ? err.message
+        : 'Failed to refresh live attendance.';
+      setLiveError(message);
+    } finally {
+      liveRequestInFlight.current = false;
+    }
+  }, [id]);
 
   const fetchSession = useCallback(async () => {
     if (!id) return;
@@ -34,35 +55,36 @@ export default function AttendanceSessionDetailsPage() {
       const res = await attendanceService.getSession(id);
       setSession(res.data);
       if (res.data.status === 'ACTIVE' || res.data.status === 'COMPLETED') {
-        fetchLiveAttendance();
+        await fetchLiveAttendance();
       }
-    } catch (err: any) {
-      showToast('error', err.response?.data?.error?.message || 'Failed to fetch session');
-      navigate('/attendance');
+      setSessionError('');
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+        ? err.message
+        : 'Failed to fetch session.';
+      setSessionError(message);
+      showToast('error', message);
     } finally {
       setLoading(false);
     }
-  }, [id, navigate, showToast]);
-
-  const fetchLiveAttendance = async () => {
-    if (!id) return;
-    try {
-      const res = await attendanceService.getLiveAttendance(id);
-      setLiveData(res.data);
-    } catch (err: any) {
-      console.error('Failed to fetch live attendance', err);
-    }
-  };
+  }, [fetchLiveAttendance, id, showToast]);
 
   useEffect(() => {
-    fetchSession();
+    const initialRefresh = window.setTimeout(() => void fetchSession(), 0);
+    return () => window.clearTimeout(initialRefresh);
   }, [fetchSession]);
 
   useEffect(() => {
-    if (session?.status !== 'ACTIVE') return;
-    const interval = setInterval(fetchLiveAttendance, 5000);
+    if (!session || !['ACTIVE', 'COMPLETED'].includes(session.status)) return;
+    const interval = window.setInterval(() => void fetchLiveAttendance(), 5000);
     return () => clearInterval(interval);
-  }, [session?.status]);
+  }, [fetchLiveAttendance, session]);
+
+  useEffect(() => {
+    if (!session || !['ACTIVE', 'SCHEDULED'].includes(session.status)) return;
+    const interval = window.setInterval(() => void fetchSession(), 15000);
+    return () => window.clearInterval(interval);
+  }, [fetchSession, session]);
 
   const handleStartBle = async () => {
     if (!id) return;
@@ -149,7 +171,7 @@ export default function AttendanceSessionDetailsPage() {
   };
 
   if (loading) return <div>Loading...</div>;
-  if (!session) return <div>Session not found</div>;
+  if (!session) return <div role="alert">{sessionError || 'Session not found.'}</div>;
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'info' | 'warning' | 'success' | 'danger'> = {
@@ -195,9 +217,15 @@ export default function AttendanceSessionDetailsPage() {
         }
       />
 
-      <div role="note" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
-        Session, roster, timetable, and attendance values are stored application records; their source has not been verified against an authoritative academic system.
-      </div>
+      {sessionError && <p role="alert">Session data could not be refreshed. {sessionError}</p>}
+      {liveError && (
+        <p role="alert">
+          Live attendance could not be refreshed; displayed attendance may be stale. {liveError}
+        </p>
+      )}
+      {!liveError && lastLiveRefresh && (
+        <p role="status" aria-live="polite">Attendance last refreshed {lastLiveRefresh.toLocaleTimeString()}.</p>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         <Card title="Session Information">

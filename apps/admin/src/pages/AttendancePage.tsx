@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
@@ -15,31 +15,57 @@ export default function AttendancePage() {
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshError, setRefreshError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [dateFilter, setDateFilter] = useState<string>(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const requestId = useRef(0);
+  const inFlight = useRef(false);
 
   const navigate = useNavigate();
   const { showToast } = useToast();
 
-  const fetchSessions = async () => {
-    setLoading(true);
+  const fetchSessions = useCallback(async (allowConcurrent = false) => {
+    if (inFlight.current && !allowConcurrent) return;
+    inFlight.current = true;
+    const currentRequest = ++requestId.current;
     try {
       const [sessRes, statsRes] = await Promise.all([
         attendanceService.getSessions({ date: dateFilter, status: statusFilter }),
         attendanceService.getStats(dateFilter)
       ]);
-      setSessions(sessRes.data);
-      setStats(statsRes.data);
-    } catch (err: any) {
-      showToast('error', err.response?.data?.error?.message || 'Failed to fetch attendance sessions');
+      if (requestId.current === currentRequest) {
+        setSessions(sessRes.data);
+        setStats(statsRes.data);
+        setRefreshError('');
+        setLastUpdated(new Date());
+      }
+    } catch (err: unknown) {
+      if (requestId.current === currentRequest) {
+        const message = err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+          ? err.message
+          : 'Failed to fetch attendance sessions.';
+        setRefreshError(message);
+        showToast('error', message);
+      }
     } finally {
-      setLoading(false);
+      if (requestId.current === currentRequest) {
+        inFlight.current = false;
+        setLoading(false);
+      }
     }
-  };
+  }, [dateFilter, showToast, statusFilter]);
 
   useEffect(() => {
-    fetchSessions();
-  }, [dateFilter, statusFilter]);
+    const initialRefresh = window.setTimeout(() => void fetchSessions(true), 0);
+    const interval = window.setInterval(() => void fetchSessions(), 15_000);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      window.clearInterval(interval);
+      requestId.current += 1;
+      inFlight.current = false;
+    };
+  }, [fetchSessions]);
 
   const columns = useMemo<TableColumn<AttendanceSession>[]>(() => [
     { key: 'sessionDate', label: 'Date', render: (val: any) => new Date(val).toLocaleDateString() },
@@ -82,10 +108,6 @@ export default function AttendancePage() {
         ]}
       />
 
-      <div role="note" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
-        These are stored application attendance records. Historical records are retained; this dashboard does not independently verify their source.
-      </div>
-
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px' }}>
           <Card title="Today's Sessions" subtitle="Total">
@@ -102,6 +124,15 @@ export default function AttendancePage() {
           </Card>
         </div>
       )}
+      <div aria-live="polite" style={{ color: refreshError ? 'var(--danger-color)' : 'var(--text-secondary)' }}>
+        {refreshError
+          ? `Attendance data could not be refreshed. The displayed values may be stale. ${refreshError}`
+          : lastUpdated
+            ? `Last refreshed ${lastUpdated.toLocaleTimeString()} · refreshes every 15 seconds`
+            : loading
+              ? 'Loading attendance data…'
+              : 'Attendance data has not been refreshed.'}
+      </div>
 
       <Card title="Sessions List">
         <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -110,14 +141,20 @@ export default function AttendancePage() {
               type="date"
               label="Date"
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
+              onChange={(e) => {
+                setLoading(true);
+                setDateFilter(e.target.value);
+              }}
             />
           </div>
           <div style={{ width: '200px' }}>
             <Select
               label="Status"
               value={statusFilter}
-              onChange={(val) => setStatusFilter(val)}
+              onChange={(val) => {
+                setLoading(true);
+                setStatusFilter(val);
+              }}
               options={[
                 { value: '', label: 'All Statuses' },
                 { value: 'SCHEDULED', label: 'SCHEDULED' },

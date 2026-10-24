@@ -94,14 +94,22 @@ timetableRoutes.get("/", requireSharedDashboardRead, async (c) => {
     const academicYearId = c.req.query("academicYearId");
     const staffId = c.req.query("staffId");
 
-    let data: any[] = [];
-    if (classId) {
-      data = await service.getTimetableByClass(classId, academicYearId);
-    } else if (staffId) {
-      data = await service.getTimetableByStaff(staffId, academicYearId);
-    } else {
-      data = [];
+    if (!classId && !staffId) {
+      return c.json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Provide either classId or staffId to retrieve timetable entries.' },
+      }, 400);
     }
+    if (classId && staffId) {
+      return c.json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Provide classId or staffId, not both.' },
+      }, 400);
+    }
+
+    const data = classId
+      ? await service.getTimetableByClass(classId, academicYearId)
+      : await service.getTimetableByStaff(staffId!, academicYearId);
 
     return c.json({ success: true, data });
   } catch (error: any) {

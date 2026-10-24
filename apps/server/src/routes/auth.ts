@@ -3,7 +3,7 @@ import { setCookie, deleteCookie } from 'hono/cookie';
 import { StudentRepository } from '../repositories/student.repository';
 import { AuditService } from '../services/audit.service';
 import { DuplicateFacultyAccountError, LocalAuthService, localAuthService } from '../services/local-auth.service';
-import { msAuthService } from '../services/ms-auth.service';
+import { sessionTokenService } from '../services/session-token.service';
 import { authenticate } from '../middlewares/auth.middleware';
 import type { AuthPrincipal } from '@smart-attendance/shared';
 
@@ -91,11 +91,31 @@ authRoutes.post('/login', async (c) => {
     await audit.log({
       action: 'FAILED_ADMIN_LOGIN',
       entityType: 'AUTHENTICATION',
-      description: 'An administrator sign-in attempt failed.',
+      description: 'An administrator or faculty sign-in attempt failed.',
       ipAddress: ip,
       userAgent: c.req.header('user-agent'),
     });
     return c.json({ success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } }, 401);
+  }
+
+  if ('pendingApproval' in result) {
+    return c.json({
+      success: false,
+      error: {
+        code: 'PENDING_HOD_APPROVAL',
+        message: result.message,
+      },
+    }, 403);
+  }
+
+  if ('rejected' in result) {
+    return c.json({
+      success: false,
+      error: {
+        code: 'APPROVAL_REJECTED',
+        message: result.message,
+      },
+    }, 403);
   }
 
   loginAttempts.delete(key);
@@ -123,6 +143,56 @@ authRoutes.post('/login', async (c) => {
 
 authRoutes.get('/signup-status', (c) => {
   return c.json({ success: true, enabled: isDemoSignupEnabled() });
+});
+
+// Staff access request registration with immediate HOD notification
+authRoutes.post('/staff-register', async (c) => {
+  const body = await c.req.json().catch(() => null) as {
+    name?: unknown;
+    email?: unknown;
+    password?: unknown;
+    staffCode?: unknown;
+    department?: unknown;
+  } | null;
+
+  if (
+    !body ||
+    typeof body.name !== 'string' ||
+    typeof body.email !== 'string' ||
+    typeof body.password !== 'string'
+  ) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Enter your full name, college email, and password.' } }, 400);
+  }
+
+  const name = body.name.trim();
+  const email = body.email.trim().toLowerCase();
+  const staffCode = typeof body.staffCode === 'string' ? body.staffCode.trim() : undefined;
+  const department = typeof body.department === 'string' ? body.department.trim() : undefined;
+  const passwordBytes = new TextEncoder().encode(body.password).length;
+
+  if (name.length < 2 || name.length > 255 || !LocalAuthService.isValidEmail(email) || passwordBytes < 8 || passwordBytes > 72) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Enter a valid name, college email, and password (at least 8 characters).' } }, 400);
+  }
+
+  try {
+    const res = await localAuthService.requestStaffAccess(name, email, body.password, staffCode, department);
+    await audit.log({
+      actorName: name,
+      actorRole: 'STAFF_CANDIDATE',
+      action: 'STAFF_APPROVAL_REQUESTED',
+      entityType: 'AUTHENTICATION',
+      entityId: res.id,
+      description: `Staff member ${name} requested portal access. Pending HOD authorization.`,
+      ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim(),
+      userAgent: c.req.header('user-agent'),
+    });
+    return c.json({ success: true, message: res.message });
+  } catch (error: unknown) {
+    if (error instanceof DuplicateFacultyAccountError || isUniqueConstraintViolation(error)) {
+      return c.json({ success: false, error: { code: 'ACCOUNT_EXISTS', message: 'A staff or faculty account with this email already exists.' } }, 409);
+    }
+    throw error;
+  }
 });
 
 authRoutes.post('/signup', async (c) => {
@@ -203,7 +273,7 @@ authRoutes.post('/student/login', async (c) => {
       registerNumber: student.registerNumber,
       microsoftUserId: student.microsoftUserId,
     };
-    const token = await msAuthService.createSessionToken(principal);
+    const token = await sessionTokenService.createSessionToken(principal);
     return c.json({ success: true, student, token });
   } catch {
     return c.json({ success: false, error: { message: 'Unable to authenticate student.' } }, 500);
@@ -212,9 +282,9 @@ authRoutes.post('/student/login', async (c) => {
 
 authRoutes.post('/logout', async (c) => {
   const user = c.get('user') as AuthPrincipal;
-  if (user.roles.includes('FACULTY')) {
+  if (user?.roles?.includes('FACULTY')) {
     await localAuthService.invalidateFacultySessions(user.id);
-  } else if (user.userType === 'STAFF') {
+  } else if (user?.userType === 'STAFF') {
     await localAuthService.invalidateSessions(user.id);
   }
   deleteCookie(c, 'admin_token', { path: '/' });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import Card from '../components/Card';
@@ -92,6 +92,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activityError, setActivityError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const refreshInProgress = useRef(false);
 
   const fetchDashboardData = useCallback(() => Promise.allSettled([
       api.get<unknown>('/api/dashboard/stats').then(readDashboardStats),
@@ -109,23 +111,43 @@ export default function DashboardPage() {
       setActivity([]);
       setActivityError(errorMessage(activityResult.reason));
     }
+    if (statsResult.status === 'fulfilled' && activityResult.status === 'fulfilled') {
+      setLastUpdated(new Date());
+    }
     setLoading(false);
   }, []);
 
   const loadDashboard = useCallback(async () => {
+    if (refreshInProgress.current) return;
+    refreshInProgress.current = true;
     setLoading(true);
     setError('');
     setActivityError('');
-    applyDashboardData(await fetchDashboardData());
+    try {
+      applyDashboardData(await fetchDashboardData());
+    } finally {
+      refreshInProgress.current = false;
+    }
   }, [applyDashboardData, fetchDashboardData]);
 
   useEffect(() => {
     let isCurrent = true;
-    void fetchDashboardData().then((results) => {
-      if (isCurrent) applyDashboardData(results);
-    });
+    const refresh = () => {
+      if (refreshInProgress.current) return;
+      refreshInProgress.current = true;
+      void fetchDashboardData()
+        .then((results) => {
+          if (isCurrent) applyDashboardData(results);
+        })
+        .finally(() => {
+          refreshInProgress.current = false;
+        });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 30_000);
     return () => {
       isCurrent = false;
+      window.clearInterval(interval);
     };
   }, [applyDashboardData, fetchDashboardData]);
 
@@ -160,6 +182,11 @@ export default function DashboardPage() {
         </div>
       )}
       {loading && !stats && <p role="status">Loading dashboard data…</p>}
+      {lastUpdated && (
+        <p aria-live="polite" style={{ color: 'var(--text-secondary)' }}>
+          Last refreshed {lastUpdated.toLocaleTimeString()} · refreshes every 30 seconds
+        </p>
+      )}
 
       {stats && (
         <div className="dashboard-page__cards">

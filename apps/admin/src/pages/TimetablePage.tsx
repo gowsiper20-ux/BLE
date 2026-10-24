@@ -14,26 +14,53 @@ export default function TimetablePage() {
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
   const [loading, setLoading] = useState(false);
+  const [periodsError, setPeriodsError] = useState<string | null>(null);
+  const [timetableError, setTimetableError] = useState<string | null>(null);
   const { showToast } = useToast();
 
-  const { data: yearsRes } = useApi<ApiResponse<AcademicYear[]>>('/api/academic-years');
-  const { data: classesRes } = useApi<ApiResponse<ClassSection[]>>('/api/classes');
+  const { data: yearsRes, error: yearsError } = useApi<ApiResponse<AcademicYear[]>>('/api/academic-years');
+  const { data: classesRes, error: classesError } = useApi<ApiResponse<ClassSection[]>>('/api/classes');
 
   // Load periods
   useEffect(() => {
-    timetableService.getPeriods().then(res => setPeriods(res.data)).catch(() => {});
+    timetableService.getPeriods()
+      .then(res => {
+        setPeriods(res.data);
+        setPeriodsError(null);
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Failed to load period times.';
+        setPeriodsError(message);
+      });
   }, []);
+
+  // Auto-select current academic year and first class
+  useEffect(() => {
+    if (!selectedYear && yearsRes?.data && yearsRes.data.length > 0) {
+      const activeYear = yearsRes.data.find(y => y.isCurrent) || yearsRes.data[0];
+      if (activeYear) setSelectedYear(activeYear.id);
+    }
+  }, [yearsRes, selectedYear]);
+
+  useEffect(() => {
+    if (!selectedClass && classesRes?.data && classesRes.data.length > 0) {
+      setSelectedClass(classesRes.data[0].id);
+    }
+  }, [classesRes, selectedClass]);
 
   // Fetch timetable when class and year selected
   useEffect(() => {
     const fetchTimetable = async () => {
       if (selectedYear && selectedClass) {
         setLoading(true);
+        setTimetableError(null);
         try {
           const res = await timetableService.getTimetableByClass(selectedClass, selectedYear);
           setTimetable(res.data);
-        } catch {
-          showToast('error', 'Failed to fetch timetable');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Failed to fetch timetable.';
+          setTimetableError(message);
+          showToast('error', message);
         } finally {
           setLoading(false);
         }
@@ -58,9 +85,13 @@ export default function TimetablePage() {
       />
 
       <div className="card" style={{ padding: '24px', marginBottom: '24px' }}>
-        <div role="note" style={{ padding: '12px 16px', marginBottom: '20px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
-          Stored academic years, classes, period times, and timetable entries are legacy application data. Their provenance has not been verified against an authoritative schedule; do not treat them as current or official.
-        </div>
+        {(yearsError || classesError || periodsError) && (
+          <div role="alert" style={{ marginBottom: 16 }}>
+            {yearsError && <>Academic years could not be loaded. </>}
+            {classesError && <>Classes could not be loaded. </>}
+            {periodsError && <>Period times could not be loaded: {periodsError}</>}
+          </div>
+        )}
         <div className="timetable-filters" style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
           <div style={{ flex: 1 }}>
             <Select
@@ -81,6 +112,8 @@ export default function TimetablePage() {
         </div>
 
         {selectedClass && selectedYear ? (
+          <>
+          {timetableError && <div role="alert">{timetableError}</div>}
           <TimetableGrid 
             timetable={timetable} 
             periods={periods} 
@@ -88,9 +121,19 @@ export default function TimetablePage() {
             academicYearId={selectedYear}
             classId={selectedClass}
             onRefresh={() => {
-              timetableService.getTimetableByClass(selectedClass, selectedYear).then(res => setTimetable(res.data));
+              setLoading(true);
+              setTimetableError(null);
+              timetableService.getTimetableByClass(selectedClass, selectedYear)
+                .then(res => setTimetable(res.data))
+                .catch((error: unknown) => {
+                  const message = error instanceof Error ? error.message : 'Failed to refresh timetable.';
+                  setTimetableError(message);
+                  showToast('error', message);
+                })
+                .finally(() => setLoading(false));
             }}
           />
+          </>
         ) : (
           <div className="empty-state">
             <p>Please select an Academic Year and a Class to view the timetable.</p>

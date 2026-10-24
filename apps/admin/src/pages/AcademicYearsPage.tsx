@@ -12,7 +12,7 @@ import { useToast } from '../hooks/useToast';
 import type { AcademicYear, ApiResponse, TableColumn } from '../types';
 
 export default function AcademicYearsPage() {
-  const { data: response, loading, refetch } = useApi<ApiResponse<AcademicYear[]>>('/api/academic-years');
+  const { data: response, loading, error, refetch } = useApi<ApiResponse<AcademicYear[]>>('/api/academic-years');
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -151,6 +151,12 @@ export default function AcademicYearsPage() {
         }
       />
 
+      {error && (
+        <div role="alert">
+          Academic years could not be loaded: {error.message || 'Request failed.'}
+          <button type="button" onClick={() => void refetch()}>Retry</button>
+        </div>
+      )}
       <DataTable
         columns={columns}
         data={response?.data || []}
@@ -158,7 +164,7 @@ export default function AcademicYearsPage() {
         loading={loading}
         onRowClick={(row) => openModal(row)}
         actions={renderActions}
-        emptyMessage="No academic years found."
+        emptyMessage={error ? 'Academic-year data is unavailable.' : 'No academic years found.'}
       />
 
       <Modal

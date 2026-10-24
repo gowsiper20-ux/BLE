@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../services/api';
+import Icon from '../components/Icon';
 import './LoginPage.css';
 
 interface LoginLocationState {
@@ -9,32 +9,15 @@ interface LoginLocationState {
 }
 
 export default function LoginPage() {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('hod.it@sonatech.ac.in');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [signupEnabled, setSignupEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, signup, isAuthenticated } = useAuth();
-
-  useEffect(() => {
-    let active = true;
-    void api.get<{ enabled: boolean }>('/api/auth/signup-status')
-      .then((response) => {
-        if (active) setSignupEnabled(response.enabled);
-      })
-      .catch(() => {
-        if (active) setSignupEnabled(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { login, isAuthenticated } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -43,21 +26,16 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, location, navigate]);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
-    if (isSignUp && password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
     setLoading(true);
-    const result = isSignUp
-      ? await signup(name, email, password)
-      : await login(email, password);
+
+    const result = await login(email, password);
     if (result.success) {
       navigate((location.state as LoginLocationState | null)?.from?.pathname || '/dashboard', { replace: true });
     } else {
-      setError(result.error || 'Invalid email or password.');
+      setError(result.error || 'Invalid credentials. Please verify your email and password.');
     }
     setLoading(false);
   };
@@ -66,122 +44,102 @@ export default function LoginPage() {
     <div className="login-layout">
       <div className="login-layout__background" />
       <div className="login-layout__overlay" />
+
       <div className="login-card-container">
         <div className="login-card">
+          {/* Header & Logo */}
           <div className="login-card__brand">
-            <img src="/assets/sona-logo.png?v=4" alt="SONA College of Technology" className="login-card__logo" />
-            <h1 className="login-card__title">SONA SMART ATTENDANCE</h1>
-            <h2 className="login-card__subtitle">HOD &amp; Faculty Portal</h2>
-            <p className="login-card__desc">
-              {isSignUp ? 'Create a faculty account.' : 'Sign in with your staff or HOD account.'}
-            </p>
-          </div>
-
-          {error && <div className="login-error" role="alert" aria-live="polite">{error}</div>}
-          <form className="login-form" onSubmit={handleSubmit}>
-            {isSignUp && (
-              <div className="form-group">
-                <label htmlFor="admin-name">Full name</label>
-                <div className="input-with-icon">
-                  <input
-                    id="admin-name"
-                    type="text"
-                    name="name"
-                    autoComplete="name"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    maxLength={255}
-                    minLength={2}
-                    required
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            )}
-            <div className="form-group">
-              <label htmlFor="admin-email">Email address</label>
-              <div className="input-with-icon">
-                <input
-                  id="admin-email"
-                  type="email"
-                  name="email"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  maxLength={254}
-                  required
-                  disabled={loading}
-                />
+            <div className="login-card__logo-row">
+              <span className="login-card__crest-badge">SONA</span>
+              <div className="login-card__brand-titles">
+                <h1 className="login-card__title">SONA SMART ATTENDANCE</h1>
+                <span className="login-card__subtitle">Department of Information Technology</span>
               </div>
             </div>
+          </div>
+
+          <div className="login-portal-badge login-portal-badge--hod" style={{ width: '100%', justifyContent: 'center', boxSizing: 'border-box' }}>
+            <Icon name="lock" size={15} />
+            <span>Head of Department (HOD) Portal</span>
+          </div>
+
+          {/* Errors or Notices */}
+          {error && <div className="login-alert login-alert--error" role="alert">{error}</div>}
+
+          {/* HOD Sign In Form */}
+          <form className="login-form" onSubmit={handleLoginSubmit}>
             <div className="form-group">
-              <label htmlFor="admin-password">Password</label>
+              <label htmlFor="hod-email">HOD / Admin College Email</label>
+              <input
+                id="hod-email"
+                type="email"
+                value={email}
+                placeholder="hod.it@sonatech.ac.in"
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="hod-password">Password</label>
               <div className="input-with-icon">
                 <input
-                  id="admin-password"
+                  id="hod-password"
                   type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  maxLength={72}
-                  minLength={isSignUp ? 12 : undefined}
+                  placeholder="Enter executive password"
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                   disabled={loading}
                 />
                 <button
                   type="button"
                   className="password-toggle"
-                  onClick={() => setShowPassword((visible) => !visible)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  aria-pressed={showPassword}
-                  disabled={loading}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label="Toggle password visibility"
                 >
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
-            {isSignUp && (
-              <div className="form-group">
-                <label htmlFor="admin-confirm-password">Confirm password</label>
-                <div className="input-with-icon">
-                  <input
-                    id="admin-confirm-password"
-                    type="password"
-                    name="confirm-password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    maxLength={72}
-                    minLength={12}
-                    required
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            )}
-            <button type="submit" className="login-button" disabled={loading} aria-busy={loading}>
-              {loading ? (isSignUp ? 'Creating account…' : 'Signing in…') : (isSignUp ? 'Sign Up' : 'Sign In')}
+
+            {/* Quick Assistant */}
+            <div className="login-quick-helper">
+              <span className="quick-helper-label">Quick Sign-in:</span>
+              <button
+                type="button"
+                className="quick-helper-chip"
+                onClick={() => {
+                  setEmail('hod.it@sonatech.ac.in');
+                  setPassword('123456789012');
+                }}
+              >
+                Fill HOD (Dr. J. Akilandeswari)
+              </button>
+              <button
+                type="button"
+                className="quick-helper-chip"
+                onClick={() => {
+                  setEmail('admin@sonatech.ac.in');
+                  setPassword('123456789012');
+                }}
+              >
+                Fill Admin
+              </button>
+            </div>
+
+            <button type="submit" className="login-btn login-btn--hod" disabled={loading}>
+              {loading ? 'Authenticating...' : 'Sign In to HOD Dashboard'}
             </button>
           </form>
-          {signupEnabled && (
-            <button
-              type="button"
-              className="login-signup-toggle"
-              onClick={() => {
-                setIsSignUp((current) => !current);
-                setError('');
-              }}
-              disabled={loading}
-            >
-              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-            </button>
-          )}
+
+          {/* Footer note */}
+          <div className="login-card__footer">
+            <span>Sona College of Technology (Autonomous), Salem · HOD Oversight Portal</span>
+          </div>
         </div>
       </div>
-      <footer className="login-footer">
-        © {new Date().getFullYear()} SONA COLLEGE OF TECHNOLOGY. All Rights Reserved
-      </footer>
     </div>
   );
 }

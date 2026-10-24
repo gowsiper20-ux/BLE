@@ -1,6 +1,6 @@
 import { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
-import { msAuthService } from '../services/ms-auth.service';
+import { sessionTokenService } from '../services/session-token.service';
 import { localAuthService } from '../services/local-auth.service';
 import { db } from '../db';
 import { classCounselors } from '../db/schema/staff';
@@ -34,7 +34,7 @@ export const authenticate = async (c: Context, next: Next) => {
     } else {
       const token = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : undefined;
       if (token) {
-        principal = await msAuthService.verifySessionToken(token);
+        principal = await sessionTokenService.verifySessionToken(token);
       }
     }
 

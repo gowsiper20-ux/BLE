@@ -3,6 +3,8 @@ import { SubjectService } from "../services/subject.service";
 import { ClassSubjectService } from "../services/class-subject.service";
 import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
+import { Buffer } from "node:buffer";
+import { TabularImportError } from "../services/tabular-import";
 
 export const subjectRoutes = new Hono();
 const service = new SubjectService();
@@ -19,8 +21,36 @@ function getActorFromContext(c: any) {
   };
 }
 
+async function getImportFile(c: any): Promise<{ file: File; buffer: Buffer } | Response> {
+  const contentLength = Number(c.req.header('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > 5 * 1024 * 1024 + 64 * 1024) {
+    return c.json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Import files are limited to 5 MB.' } }, 413);
+  }
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Choose a CSV or XLSX file.' } }, 400);
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return c.json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Import files are limited to 5 MB.' } }, 413);
+  }
+  const extension = file.name.toLowerCase().split('.').pop();
+  const allowedTypes = extension === 'csv'
+    ? ['text/csv', 'application/vnd.ms-excel', 'application/octet-stream', '']
+    : extension === 'xlsx'
+      ? ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream', '']
+      : [];
+  if (!allowedTypes.includes(file.type.toLowerCase())) {
+    return c.json({ success: false, error: { code: 'UNSUPPORTED_FILE', message: 'Upload a valid .csv or .xlsx file.' } }, 400);
+  }
+  return { file, buffer: Buffer.from(await file.arrayBuffer()) };
+}
+
 function handleSubjectError(c: any, error: any) {
   const msg = error?.message || 'An unexpected error occurred.';
+  if (error instanceof TabularImportError) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: msg } }, 400);
+  }
   if (
     msg.includes('already exists') ||
     msg.includes('Cannot delete') ||
@@ -48,6 +78,35 @@ function handleSubjectError(c: any, error: any) {
   }
   return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: msg } }, 500);
 }
+
+// --- Bulk Import ---
+subjectRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="subject-import-template.csv"');
+  return c.body('code,name,subject_type,year_number,regulation_code,description\r\n');
+});
+
+subjectRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
+  try {
+    const upload = await getImportFile(c);
+    if (upload instanceof Response) return upload;
+    const data = await service.validateImportFile(upload.buffer, upload.file.name);
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleSubjectError(c, error);
+  }
+});
+
+subjectRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
+  try {
+    const upload = await getImportFile(c);
+    if (upload instanceof Response) return upload;
+    const data = await service.confirmImport(upload.buffer, upload.file.name, getActorFromContext(c));
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleSubjectError(c, error);
+  }
+});
 
 subjectRoutes.get("/", requireSharedDashboardRead, async (c) => {
   try {

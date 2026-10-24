@@ -14,6 +14,7 @@ export default function StaffDetailsPage() {
 
   const [staff, setStaff] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   const [assignments, setAssignments] = useState<ClassCounselor[]>([]);
 
@@ -26,8 +27,11 @@ export default function StaffDetailsPage() {
       ]);
       setStaff(staffData);
       setAssignments(assignmentsData);
-    } catch {
-      showToast('error', 'Failed to fetch staff details');
+      setLoadError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch staff details.';
+      setLoadError(message);
+      showToast('error', message);
     } finally {
       setLoading(false);
     }
@@ -48,7 +52,7 @@ export default function StaffDetailsPage() {
   }
 
   if (!staff) {
-    return <div>Staff member not found.</div>;
+    return <div role={loadError ? 'alert' : undefined}>{loadError || 'Staff member not found.'}</div>;
   }
 
   return (

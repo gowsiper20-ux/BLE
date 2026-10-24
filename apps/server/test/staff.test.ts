@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { msAuthService } from '../src/services/ms-auth.service';
+import { msAuthService } from '../src/services/session-token.service';
 import { db } from '../src/db';
 import { departments, academicYears, batches, regulations, classes } from '../src/db/schema/academic';
 import { staff, roles, staffRoles, classCounselors } from '../src/db/schema/staff';

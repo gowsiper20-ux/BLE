@@ -25,8 +25,21 @@ export interface StaffImportResult {
   rows: Array<{ rowNumber: number; status: 'created' | 'skipped'; errors: Array<{ code: string; message: string }> }>;
 }
 
+export interface StaffApprovalRequest {
+  id: string;
+  name: string;
+  email: string;
+  staffCode?: string;
+  department?: string;
+  designation?: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejectionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const staffService = {
-  // --- Staff ---
+  // --- Staff Directory ---
   getStaff: async (params?: { search?: string; status?: string; role?: string; page?: number; limit?: number }) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params || {})) {
@@ -58,6 +71,7 @@ export const staffService = {
     return res.data;
   },
 
+  // --- Bulk Import ---
   previewImport: async (file: File) => {
     const form = new FormData();
     form.append('file', file);
@@ -73,6 +87,32 @@ export const staffService = {
   },
 
   downloadTemplate: () => api.download('/api/staff/import/template'),
+
+  // --- HOD Approvals & Notifications ---
+  getPendingApprovals: async () => {
+    const res = await api.get<{ success: boolean; data: StaffApprovalRequest[]; count: number }>('/api/staff/approvals/pending');
+    return res.data || [];
+  },
+
+  getAllApprovals: async () => {
+    const res = await api.get<{ success: boolean; data: StaffApprovalRequest[]; count: number }>('/api/staff/approvals/all');
+    return res.data || [];
+  },
+
+  approveStaff: async (id: string) => {
+    const res = await api.post<{ success: boolean; message: string }>(`/api/staff/approvals/${id}/approve`, {});
+    return res;
+  },
+
+  rejectStaff: async (id: string, reason?: string) => {
+    const res = await api.post<{ success: boolean; message: string }>(`/api/staff/approvals/${id}/reject`, { reason });
+    return res;
+  },
+
+  registerStaffRequest: async (data: { name: string; email: string; password: string; staffCode?: string; department?: string }) => {
+    const res = await api.post<{ success: boolean; message: string }>('/api/auth/staff-register', data);
+    return res;
+  },
 
   // --- Class Counselors ---
   getCounselorAssignments: async (params?: { classId?: string; academicYearId?: string; staffId?: string }) => {

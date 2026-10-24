@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { facultyAuthAccounts, staffCredentials } from '../db/schema/auth';
+import { facultyAuthAccounts, staffCredentials, staffApprovalRequests } from '../db/schema/auth';
 import { roles, staff, staffRoles } from '../db/schema/staff';
 import type { AuthPrincipal } from '@smart-attendance/shared';
 
@@ -20,6 +20,12 @@ function getJwtSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+export type LoginResult = 
+  | { principal: AuthPrincipal; token: string }
+  | { pendingApproval: true; message: string }
+  | { rejected: true; message: string }
+  | null;
+
 export class LocalAuthService {
   private readonly dummyHash = bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
 
@@ -32,7 +38,7 @@ export class LocalAuthService {
       .sign(getJwtSecret());
   }
 
-  async login(email: string, password: string): Promise<{ principal: AuthPrincipal; token: string } | null> {
+  async login(email: string, password: string): Promise<LoginResult> {
     const normalizedEmail = email.trim().toLowerCase();
     const entries = await db
       .select({
@@ -77,8 +83,32 @@ export class LocalAuthService {
         eq(facultyAuthAccounts.status, 'ACTIVE'),
         eq(facultyAuthAccounts.role, 'FACULTY'),
       )))[0];
+
     const passwordMatches = await bcrypt.compare(password, facultyAccount?.passwordHash || await this.dummyHash);
-    if (!facultyAccount || !passwordMatches) return null;
+    if (!facultyAccount || !passwordMatches) {
+      // Check if user has an approval request in staff_approval_requests
+      const [pendingRequest] = await db.select()
+        .from(staffApprovalRequests)
+        .where(sql`lower(${staffApprovalRequests.email}) = ${normalizedEmail}`);
+      
+      if (pendingRequest) {
+        if (pendingRequest.status === 'PENDING') {
+          return {
+            pendingApproval: true,
+            message: 'Your staff account registration is currently pending approval by the Head of Department (HOD). An alert has been forwarded to the HOD.',
+          };
+        }
+        if (pendingRequest.status === 'REJECTED') {
+          return {
+            rejected: true,
+            message: pendingRequest.rejectionReason 
+              ? `Your registration request was declined: ${pendingRequest.rejectionReason}`
+              : 'Your staff registration request was declined by the Head of Department.',
+          };
+        }
+      }
+      return null;
+    }
 
     const principal: AuthPrincipal = {
       id: facultyAccount.id,
@@ -94,6 +124,151 @@ export class LocalAuthService {
       .setExpirationTime(`${SESSION_LIFETIME_SECONDS}s`)
       .sign(getJwtSecret());
     return { principal, token };
+  }
+
+  async requestStaffAccess(
+    name: string,
+    email: string,
+    password: string,
+    staffCode?: string,
+    department?: string,
+  ): Promise<{ id: string; status: string; message: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingStaff = await db.select({ id: staff.id })
+      .from(staff)
+      .where(sql`lower(${staff.collegeEmail}) = ${normalizedEmail}`)
+      .limit(1);
+    const existingFaculty = await db.select({ id: facultyAuthAccounts.id })
+      .from(facultyAuthAccounts)
+      .where(sql`lower(${facultyAuthAccounts.email}) = ${normalizedEmail}`)
+      .limit(1);
+
+    if (existingStaff.length || existingFaculty.length) {
+      throw new DuplicateFacultyAccountError();
+    }
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    
+    // Check if an existing approval request exists
+    const [existingRequest] = await db.select()
+      .from(staffApprovalRequests)
+      .where(sql`lower(${staffApprovalRequests.email}) = ${normalizedEmail}`)
+      .limit(1);
+
+    let requestId: string;
+    if (existingRequest) {
+      if (existingRequest.status === 'APPROVED') {
+        throw new DuplicateFacultyAccountError();
+      }
+      await db.update(staffApprovalRequests)
+        .set({
+          name: name.trim(),
+          staffCode: staffCode ? staffCode.trim().toUpperCase() : null,
+          department: department?.trim() || 'Information Technology',
+          passwordHash,
+          status: 'PENDING',
+          rejectionReason: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(staffApprovalRequests.id, existingRequest.id));
+      requestId = existingRequest.id;
+    } else {
+      const [inserted] = await db.insert(staffApprovalRequests).values({
+        name: name.trim(),
+        email: normalizedEmail,
+        staffCode: staffCode ? staffCode.trim().toUpperCase() : null,
+        department: department?.trim() || 'Information Technology',
+        passwordHash,
+        status: 'PENDING',
+      }).returning({ id: staffApprovalRequests.id });
+      requestId = inserted.id;
+    }
+
+    return {
+      id: requestId,
+      status: 'PENDING',
+      message: 'Your registration request has been submitted to the HOD for authorization.',
+    };
+  }
+
+  async getPendingStaffRequests() {
+    return db.select()
+      .from(staffApprovalRequests)
+      .where(eq(staffApprovalRequests.status, 'PENDING'))
+      .orderBy(sql`${staffApprovalRequests.createdAt} DESC`);
+  }
+
+  async getAllStaffRequests() {
+    return db.select()
+      .from(staffApprovalRequests)
+      .orderBy(sql`${staffApprovalRequests.createdAt} DESC`);
+  }
+
+  async approveStaffRequest(requestId: string) {
+    const [req] = await db.select()
+      .from(staffApprovalRequests)
+      .where(eq(staffApprovalRequests.id, requestId));
+    if (!req) throw new Error('Approval request not found.');
+    if (req.status === 'APPROVED') return { success: true, message: 'Already approved.' };
+
+    await db.transaction(async (tx) => {
+      // 1. Create or update facultyAuthAccounts
+      const existingFaculty = (await tx.select().from(facultyAuthAccounts).where(sql`lower(${facultyAuthAccounts.email}) = ${req.email}`))[0];
+      if (existingFaculty) {
+        await tx.update(facultyAuthAccounts).set({ status: 'ACTIVE', updatedAt: new Date() }).where(eq(facultyAuthAccounts.id, existingFaculty.id));
+      } else {
+        await tx.insert(facultyAuthAccounts).values({
+          name: req.name,
+          email: req.email,
+          passwordHash: req.passwordHash,
+          role: 'FACULTY',
+          status: 'ACTIVE',
+        });
+      }
+
+      // 2. Also create staff record if not existing so they appear in staff list!
+      const generatedStaffCode = req.staffCode || `FAC-${Math.floor(1000 + Math.random() * 9000)}`;
+      const existingStaff = (await tx.select().from(staff).where(sql`lower(${staff.collegeEmail}) = ${req.email}`))[0];
+      if (!existingStaff) {
+        const [newStaff] = await tx.insert(staff).values({
+          name: req.name,
+          collegeEmail: req.email,
+          staffCode: generatedStaffCode,
+          status: 'ACTIVE',
+        }).returning();
+
+        const [staffRole] = await tx.select().from(roles).where(eq(roles.name, 'STAFF'));
+        if (staffRole) {
+          await tx.insert(staffRoles).values({
+            staffId: newStaff.id,
+            roleId: staffRole.id,
+          }).onConflictDoNothing();
+        }
+      }
+
+      // 3. Mark approval request as APPROVED
+      await tx.update(staffApprovalRequests).set({
+        status: 'APPROVED',
+        updatedAt: new Date(),
+      }).where(eq(staffApprovalRequests.id, requestId));
+    });
+
+    return { success: true, message: `Staff member ${req.name} has been approved.` };
+  }
+
+  async rejectStaffRequest(requestId: string, reason?: string) {
+    const [req] = await db.select()
+      .from(staffApprovalRequests)
+      .where(eq(staffApprovalRequests.id, requestId));
+    if (!req) throw new Error('Approval request not found.');
+
+    await db.update(staffApprovalRequests).set({
+      status: 'REJECTED',
+      rejectionReason: reason || 'Declined by Head of Department',
+      updatedAt: new Date(),
+    }).where(eq(staffApprovalRequests.id, requestId));
+
+    return { success: true, message: `Staff request for ${req.name} has been declined.` };
   }
 
   async registerFacultyAccount(

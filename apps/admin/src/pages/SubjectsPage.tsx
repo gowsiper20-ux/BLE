@@ -13,6 +13,7 @@ import { useApi } from '../hooks/useApi';
 import type { Subject, TableColumn, Regulation, ApiResponse } from '../types';
 
 import SubjectFormModal from '../components/subjects/SubjectFormModal';
+import BulkImportModal from '../components/BulkImportModal';
 
 export default function SubjectsPage() {
   const { showToast } = useToast();
@@ -33,6 +34,7 @@ export default function SubjectsPage() {
   const [filterStatus, setFilterStatus] = useState('');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [subjectToDeactivate, setSubjectToDeactivate] = useState<Subject | null>(null);
   const [subjectToActivate, setSubjectToActivate] = useState<Subject | null>(null);
@@ -117,15 +119,6 @@ export default function SubjectsPage() {
     { key: 'code', label: 'Code', sortable: true },
     { key: 'name', label: 'Subject Name', sortable: true },
     {
-      key: 'dataSource',
-      label: 'Entry Source',
-      render: (value: unknown) => (
-        <Badge variant="warning">
-          {value === 'MANUALLY_ENTERED' ? 'Manual entry' : 'Legacy — unverified'}
-        </Badge>
-      ),
-    },
-    {
       key: 'subjectType',
       label: 'Type',
       render: (val: any) => {
@@ -178,15 +171,16 @@ export default function SubjectsPage() {
           { label: 'Subjects' },
         ]}
         actions={
-          <Button icon="add" onClick={handleAdd}>
-            Add Subject
-          </Button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Button variant="secondary" icon="upload" onClick={() => setIsImportOpen(true)}>
+              Bulk Import Subjects
+            </Button>
+            <Button icon="add" onClick={handleAdd}>
+              Add Subject
+            </Button>
+          </div>
         }
       />
-
-      <div role="note" style={{ padding: '12px 16px', borderRadius: 6, background: '#FFF3E0', color: '#7A4B00' }}>
-        Existing legacy subject rows are retained for historical references. Add subjects using values confirmed by your college; manual entry is not represented as verification from an external official system.
-      </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', backgroundColor: 'var(--bg-surface)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
         <div style={{ flex: 1, minWidth: '250px' }}>
@@ -266,6 +260,21 @@ export default function SubjectsPage() {
         onClose={() => setIsFormOpen(false)}
         subject={selectedSubject}
         onSuccess={fetchSubjects}
+      />
+
+      <BulkImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        title="Bulk Import Subjects"
+        entityName="subjects"
+        sampleTemplateName="subject-import-template.csv"
+        columnsNote="Columns: code, name, subject_type (THEORY/LAB/ELECTIVE/PROJECT/SEMINAR), year_number (1-4), regulation_code (e.g. R2023, R2021). Supports Excel (.xlsx) and CSV."
+        onDownloadTemplate={() => subjectService.downloadTemplate()}
+        onPreview={(file) => subjectService.previewImport(file)}
+        onConfirm={(file) => subjectService.confirmImport(file)}
+        onSuccess={() => {
+          fetchSubjects();
+        }}
       />
 
       <ConfirmDialog
