@@ -295,7 +295,7 @@ export default function AttendanceSessionDetailsPage() {
       </div>
 
       {liveData && (
-        <Card title="Student Attendance Roster & Manual Marking" padding="none">
+        <Card title="Student Attendance List & Manual Marking" padding="none">
           <DataTable
             data={liveData.students}
             keyField="studentId"

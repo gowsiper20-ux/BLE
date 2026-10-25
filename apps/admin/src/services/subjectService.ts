@@ -44,7 +44,7 @@ export const subjectService = {
   },
 
   // --- Bulk Import ---
-  downloadTemplate: () => api.download('/api/subjects/import/template'),
+  downloadTemplate: (format: 'csv' | 'xlsx' = 'csv') => api.download(`/api/subjects/import/template?format=${format}`),
 
   previewImport: async (file: File) => {
     const form = new FormData();

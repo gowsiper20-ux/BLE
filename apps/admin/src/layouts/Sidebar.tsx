@@ -105,7 +105,7 @@ export default function Sidebar() {
           allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF', 'FACULTY'],
           children: [
             { label: 'Weekly Schedule', path: '/timetable' },
-            { label: 'Overrides & Substitutions', path: '/timetable/overrides' },
+            { label: 'Substitutions', path: '/timetable/overrides' },
           ],
         },
         {
@@ -138,7 +138,7 @@ export default function Sidebar() {
           <div className="modern-sidebar__logo-badge">SONA</div>
           <div className="modern-sidebar__brand-text">
             <span className="modern-sidebar__brand-title">SMART ATTENDANCE</span>
-            <span className="modern-sidebar__brand-dept">Dept of Information Tech</span>
+            <span className="modern-sidebar__brand-dept" title="Department of Information Technology">Department of Information Technology</span>
           </div>
         </div>
       </div>

@@ -11,11 +11,11 @@ const pageTitles: Record<string, string> = {
   '/batches': 'Batches',
   '/regulations': 'Regulations',
   '/classes': 'Classes',
-  '/students': 'Students Directory',
+  '/students': 'Students',
   '/staff': 'Faculty & Staff',
   '/subjects': 'Subjects',
   '/timetable': 'Timetable',
-  '/timetable/overrides': 'Timetable Overrides',
+  '/timetable/overrides': 'Substitutions',
   '/attendance': 'Attendance',
   '/audit-logs': 'Audit Logs',
   '/settings': 'Settings',
@@ -68,7 +68,7 @@ export default function Topbar() {
     <header className="topbar">
       <div className="topbar__left">
         <h2 className="topbar__title">{title}</h2>
-        <span className="topbar__college-tag">Sona College of Technology · IT Dept</span>
+        <span className="topbar__college-tag">Sona College of Technology · Department of Information Technology</span>
       </div>
 
       <div className="topbar__right">

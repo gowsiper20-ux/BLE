@@ -75,5 +75,5 @@ export const studentService = {
     return response.data;
   },
 
-  downloadTemplate: () => api.download('/api/students/import/template'),
+  downloadTemplate: (format: 'csv' | 'xlsx' = 'csv') => api.download(`/api/students/import/template?format=${format}`),
 };

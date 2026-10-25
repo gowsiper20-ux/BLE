@@ -1,12 +1,140 @@
+/* ============================================================
+   Weekly Timetable Page — Compact Layout
+   ============================================================ */
+
 .timetable-page {
-  animation: fadeIn 0.3s ease-in-out;
+  animation: fadeIn 0.25s ease-in-out;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.timetable-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #ffffff;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  flex-wrap: wrap;
+}
+
+.timetable-page-header__left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timetable-breadcrumb {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.timetable-breadcrumb--active {
+  color: #0066cc;
+  font-weight: 600;
+}
+
+.timetable-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.timetable-page-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.timetable-header-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.timetable-header-badge--class {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.timetable-header-badge--year {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.timetable-page-header__filters {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.timetable-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timetable-filter-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.timetable-select-wrap {
+  min-width: 155px;
+}
+
+.timetable-select-wrap .select-group,
+.timetable-select-wrap .input-group {
+  margin-bottom: 0 !important;
+}
+
+.timetable-select-wrap select {
+  padding: 5px 10px !important;
+  font-size: 12px !important;
+  height: 32px !important;
+}
+
+.timetable-alert-box {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.timetable-empty-card {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 40px 20px;
 }
 
 .empty-state {
   text-align: center;
-  padding: 48px;
   color: var(--text-secondary);
-  border: 1px dashed var(--border-color);
-  border-radius: 8px;
-  background-color: var(--surface-color);
+}
+
+.empty-state-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
 }

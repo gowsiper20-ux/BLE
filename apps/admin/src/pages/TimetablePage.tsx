@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import PageHeader from '../components/PageHeader';
 import Select from '../components/Select';
 import { useApi } from '../hooks/useApi';
 import { timetableService } from '../services/timetableService';
@@ -74,72 +73,101 @@ export default function TimetablePage() {
   const yearOptions = yearsRes?.data?.map(y => ({ value: y.id, label: y.name })) || [];
   const classOptions = classesRes?.data?.map(c => ({ value: c.id, label: c.name })) || [];
 
+  const selectedYearObj = yearsRes?.data?.find(y => y.id === selectedYear);
+  const selectedClassObj = classesRes?.data?.find(c => c.id === selectedClass);
+
   return (
     <div className="timetable-page">
-      <PageHeader
-        title="Weekly Timetable"
-        breadcrumbs={[
-          { label: 'Home', path: '/dashboard' },
-          { label: 'Timetable' }
-        ]}
-      />
-
-      <div className="card" style={{ padding: '24px', marginBottom: '24px' }}>
-        {(yearsError || classesError || periodsError) && (
-          <div role="alert" style={{ marginBottom: 16 }}>
-            {yearsError && <>Academic years could not be loaded. </>}
-            {classesError && <>Classes could not be loaded. </>}
-            {periodsError && <>Period times could not be loaded: {periodsError}</>}
+      {/* Sleek, space-efficient header banner */}
+      <div className="timetable-page-header">
+        <div className="timetable-page-header__left">
+          <div className="timetable-breadcrumb">
+            <span>Home</span>
+            <span>/</span>
+            <span>Timetable</span>
+            <span>/</span>
+            <span className="timetable-breadcrumb--active">Weekly Schedule</span>
           </div>
-        )}
-        <div className="timetable-filters" style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
-          <div style={{ flex: 1 }}>
-            <Select
-              label="Academic Year"
-              value={selectedYear}
-              onChange={setSelectedYear}
-              options={[{ value: '', label: 'Select Year...' }, ...yearOptions]}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <Select
-              label="Class"
-              value={selectedClass}
-              onChange={setSelectedClass}
-              options={[{ value: '', label: 'Select Class...' }, ...classOptions]}
-            />
+          <div className="timetable-title-group">
+            <h1 className="timetable-page-title">Weekly Timetable</h1>
+            {selectedClassObj && (
+              <span className="timetable-header-badge timetable-header-badge--class">
+                {selectedClassObj.name}
+              </span>
+            )}
+            {selectedYearObj && (
+              <span className="timetable-header-badge timetable-header-badge--year">
+                {selectedYearObj.name}
+              </span>
+            )}
           </div>
         </div>
 
-        {selectedClass && selectedYear ? (
-          <>
-          {timetableError && <div role="alert">{timetableError}</div>}
-          <TimetableGrid 
-            timetable={timetable} 
-            periods={periods} 
-            loading={loading}
-            academicYearId={selectedYear}
-            classId={selectedClass}
-            onRefresh={() => {
-              setLoading(true);
-              setTimetableError(null);
-              timetableService.getTimetableByClass(selectedClass, selectedYear)
-                .then(res => setTimetable(res.data))
-                .catch((error: unknown) => {
-                  const message = error instanceof Error ? error.message : 'Failed to refresh timetable.';
-                  setTimetableError(message);
-                  showToast('error', message);
-                })
-                .finally(() => setLoading(false));
-            }}
-          />
-          </>
-        ) : (
-          <div className="empty-state">
-            <p>Please select an Academic Year and a Class to view the timetable.</p>
+        {/* Compact Filter Selects */}
+        <div className="timetable-page-header__filters">
+          <div className="timetable-filter-item">
+            <span className="timetable-filter-label">Academic Year</span>
+            <div className="timetable-select-wrap">
+              <Select
+                value={selectedYear}
+                onChange={setSelectedYear}
+                options={[{ value: '', label: 'Select Year...' }, ...yearOptions]}
+              />
+            </div>
           </div>
-        )}
+          <div className="timetable-filter-item">
+            <span className="timetable-filter-label">Class</span>
+            <div className="timetable-select-wrap">
+              <Select
+                value={selectedClass}
+                onChange={setSelectedClass}
+                options={[{ value: '', label: 'Select Class...' }, ...classOptions]}
+              />
+            </div>
+          </div>
+        </div>
       </div>
+
+      {(yearsError || classesError || periodsError || timetableError) && (
+        <div className="timetable-alert-box" role="alert">
+          {yearsError && <div>Academic years could not be loaded.</div>}
+          {classesError && <div>Classes could not be loaded.</div>}
+          {periodsError && <div>Period times could not be loaded: {periodsError}</div>}
+          {timetableError && <div>{timetableError}</div>}
+        </div>
+      )}
+
+      {selectedClass && selectedYear ? (
+        <TimetableGrid
+          timetable={timetable}
+          periods={periods}
+          loading={loading}
+          academicYearId={selectedYear}
+          classId={selectedClass}
+          classNameText={selectedClassObj?.name}
+          academicYearName={selectedYearObj?.name}
+          onRefresh={() => {
+            setLoading(true);
+            setTimetableError(null);
+            timetableService.getTimetableByClass(selectedClass, selectedYear)
+              .then(res => setTimetable(res.data))
+              .catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : 'Failed to refresh timetable.';
+                setTimetableError(message);
+                showToast('error', message);
+              })
+              .finally(() => setLoading(false));
+          }}
+        />
+      ) : (
+        <div className="timetable-empty-card">
+          <div className="empty-state">
+            <div className="empty-state-icon">📅</div>
+            <h3>Select Timetable Parameters</h3>
+            <p>Please select an Academic Year and a Class above to load the weekly schedule.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

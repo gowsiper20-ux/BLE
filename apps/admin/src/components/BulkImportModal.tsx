@@ -29,13 +29,64 @@ interface BulkImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  entityName: string; // 'students' or 'faculty'
+  entityName: string; // 'students' | 'faculty' | 'staff' | 'subjects'
   sampleTemplateName?: string;
   columnsNote: string;
-  onDownloadTemplate: () => Promise<any> | void;
+  onDownloadTemplate?: (format: 'csv' | 'xlsx') => Promise<any> | void;
   onPreview: (file: File) => Promise<any>;
   onConfirm: (file: File) => Promise<any>;
   onSuccess: () => void;
+}
+
+function downloadClientFallback(entityName: string, format: 'xlsx' | 'csv') {
+  let headers: string[] = [];
+  let sample: string[] = [];
+
+  if (entityName === 'students') {
+    headers = ['register_number', 'name', 'college_email', 'class_id'];
+    sample = ['21IT001', 'Sample Student', 'student@sonatech.ac.in', 'II IT-A'];
+  } else if (entityName === 'subjects') {
+    headers = ['code', 'name', 'subject_type', 'year_number', 'regulation_code', 'description'];
+    sample = ['CS3401', 'Algorithms and Data Structures', 'THEORY', '2', 'R2023', 'Core Subject'];
+  } else {
+    headers = ['staff_code', 'name', 'college_email'];
+    sample = ['IT001', 'Sample Teacher', 'faculty@sonatech.ac.in'];
+  }
+
+  if (format === 'csv') {
+    const csv = `${headers.join(',')}\r\n${sample.join(',')}\r\n`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${entityName}-template.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 100);
+  } else {
+    // Spreadsheet XML fallback supported by all versions of Excel
+    const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Template">
+  <Table>
+   <Row>
+    ${headers.map(h => `<Cell><Data ss:Type="String">${h}</Data></Cell>`).join('')}
+   </Row>
+   <Row>
+    ${sample.map(s => `<Cell><Data ss:Type="String">${s}</Data></Cell>`).join('')}
+   </Row>
+  </Table>
+ </Worksheet>
+</Workbook>`;
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${entityName}-template.xls`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 100);
+  }
 }
 
 export default function BulkImportModal({
@@ -84,7 +135,7 @@ export default function BulkImportModal({
     } catch (err: unknown) {
       setError(err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
         ? err.message
-        : 'Failed to parse and validate file. Please check file formatting.');
+        : 'Failed to read file. Please make sure the columns match the template.');
     } finally {
       setValidating(false);
     }
@@ -114,15 +165,40 @@ export default function BulkImportModal({
     try {
       const res = await onConfirm(file);
       setResult(res);
-      // Immediately trigger parent list refresh!
       onSuccess();
     } catch (err: unknown) {
       setError(err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
         ? err.message
-        : 'Import processing failed. Please retry.');
+        : 'Import failed. Please check the file and try again.');
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleDownload = async (format: 'xlsx' | 'csv') => {
+    const ext = format === 'xlsx' ? 'xlsx' : 'csv';
+    const filename = `${entityName}-template.${ext}`;
+
+    try {
+      if (onDownloadTemplate) {
+        const res = await onDownloadTemplate(format);
+        if (res instanceof Blob) {
+          const url = URL.createObjectURL(res);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(url), 100);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('API template download error, triggering client fallback:', err);
+    }
+
+    downloadClientFallback(entityName, format);
   };
 
   const downloadErrorReport = () => {
@@ -139,7 +215,7 @@ export default function BulkImportModal({
     link.href = URL.createObjectURL(blob);
     link.download = `${entityName}-import-errors.csv`;
     link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 0);
+    setTimeout(() => URL.revokeObjectURL(link.href), 100);
   };
 
   return (
@@ -148,17 +224,29 @@ export default function BulkImportModal({
         {/* Step Info & Template Download */}
         <div className="bulk-import-modal__top-banner">
           <div className="bulk-import-modal__banner-text">
-            <h4>Import Guidelines</h4>
+            <h4>Instructions</h4>
             <p>{columnsNote}</p>
           </div>
-          <button
-            type="button"
-            className="bulk-import-modal__template-btn"
-            onClick={() => void onDownloadTemplate()}
-          >
-            <Icon name="download" size={16} />
-            <span>Download CSV Template</span>
-          </button>
+          <div className="bulk-import-modal__template-buttons">
+            <button
+              type="button"
+              className="bulk-import-modal__template-btn bulk-import-modal__template-btn--excel"
+              onClick={() => void handleDownload('xlsx')}
+              title="Download pre-formatted Excel template (.xlsx)"
+            >
+              <Icon name="download" size={15} />
+              <span>Download Excel Template</span>
+            </button>
+            <button
+              type="button"
+              className="bulk-import-modal__template-btn bulk-import-modal__template-btn--csv"
+              onClick={() => void handleDownload('csv')}
+              title="Download standard CSV template (.csv)"
+            >
+              <Icon name="download" size={15} />
+              <span>Download CSV Template</span>
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -182,7 +270,7 @@ export default function BulkImportModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               style={{ display: 'none' }}
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
@@ -197,7 +285,7 @@ export default function BulkImportModal({
               <div className="bulk-import-dropzone__file-details">
                 <span className="bulk-import-dropzone__filename">{file.name}</span>
                 <span className="bulk-import-dropzone__filesize">
-                  ({(file.size / 1024).toFixed(1)} KB) · Click or drag to change
+                  ({(file.size / 1024).toFixed(1)} KB) · Click or drag to choose another file
                 </span>
               </div>
             ) : (
@@ -206,7 +294,7 @@ export default function BulkImportModal({
                   Choose an Excel (.xlsx) or CSV file, or drag &amp; drop here
                 </span>
                 <span className="bulk-import-dropzone__secondary-text">
-                  Standard format up to 5 MB supported
+                  Standard spreadsheet format up to 5 MB supported
                 </span>
               </div>
             )}
@@ -217,7 +305,7 @@ export default function BulkImportModal({
         {validating && (
           <div className="bulk-import-modal__loading">
             <div className="bulk-import-spinner" />
-            <span>Analyzing and validating records against database...</span>
+            <span>Checking file and validating records...</span>
           </div>
         )}
 
@@ -231,11 +319,11 @@ export default function BulkImportModal({
               </div>
               <div className="bulk-import-metric bulk-import-metric--valid">
                 <span className="bulk-import-metric__val">{preview.valid}</span>
-                <span className="bulk-import-metric__lbl">Valid &amp; Ready</span>
+                <span className="bulk-import-metric__lbl">Ready to Import</span>
               </div>
               <div className="bulk-import-metric bulk-import-metric--invalid">
                 <span className="bulk-import-metric__val">{preview.errors}</span>
-                <span className="bulk-import-metric__lbl">Invalid / Issues</span>
+                <span className="bulk-import-metric__lbl">Needs Attention</span>
               </div>
             </div>
 
@@ -252,11 +340,18 @@ export default function BulkImportModal({
                         <th>Email</th>
                         <th>Class</th>
                       </>
+                    ) : entityName === 'subjects' ? (
+                      <>
+                        <th>Subject Code</th>
+                        <th>Subject Name</th>
+                        <th>Type</th>
+                        <th>Year</th>
+                      </>
                     ) : (
                       <>
                         <th>Staff Code</th>
                         <th>Name</th>
-                        <th>College Email</th>
+                        <th>Email</th>
                       </>
                     )}
                     <th>Status</th>
@@ -272,6 +367,13 @@ export default function BulkImportModal({
                           <td><strong>{String(row.name || '-')}</strong></td>
                           <td>{String(row.collegeEmail || '-')}</td>
                           <td>{String(row.className || row.classId || '-')}</td>
+                        </>
+                      ) : entityName === 'subjects' ? (
+                        <>
+                          <td><span className="bulk-import-badge-mono">{String(row.code || '-')}</span></td>
+                          <td><strong>{String(row.name || '-')}</strong></td>
+                          <td>{String(row.subjectType || '-')}</td>
+                          <td>{String(row.yearNumber || '-')}</td>
                         </>
                       ) : (
                         <>
@@ -351,8 +453,8 @@ export default function BulkImportModal({
             </div>
             <h3>Import Completed Successfully!</h3>
             <p>
-              Successfully created <strong>{result.created}</strong> records.
-              {result.skipped > 0 && ` (${result.skipped} skipped)`}
+              Successfully added <strong>{result.created}</strong> records.
+              {result.skipped > 0 && ` (${result.skipped} already existed)`}
               {result.failed > 0 && ` (${result.failed} failed)`}
             </p>
             <div className="bulk-import-modal__success-actions">
@@ -361,7 +463,7 @@ export default function BulkImportModal({
                 className="bulk-import-btn bulk-import-btn--primary"
                 onClick={handleClose}
               >
-                Done &amp; View Directory
+                Done &amp; View List
               </button>
             </div>
           </div>

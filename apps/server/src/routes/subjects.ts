@@ -5,6 +5,7 @@ import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middle
 import type { AuthPrincipal } from "@smart-attendance/shared";
 import { Buffer } from "node:buffer";
 import { TabularImportError } from "../services/tabular-import";
+import * as xlsx from 'xlsx';
 
 export const subjectRoutes = new Hono();
 const service = new SubjectService();
@@ -81,9 +82,41 @@ function handleSubjectError(c: any, error: any) {
 
 // --- Bulk Import ---
 subjectRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+  const format = c.req.query('format')?.toLowerCase();
+  if (format === 'xlsx') {
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.aoa_to_sheet([
+      ['code', 'name', 'subject_type', 'year_number', 'regulation_code', 'description'],
+      ['CS3401', 'Algorithms and Data Structures', 'THEORY', '2', 'R2023', 'Core Subject']
+    ]);
+    xlsx.utils.book_append_sheet(wb, ws, 'Subjects Template');
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    c.header('Content-Disposition', 'attachment; filename="subject-import-template.xlsx"');
+    return c.body(buf);
+  }
   c.header('Content-Type', 'text/csv; charset=utf-8');
   c.header('Content-Disposition', 'attachment; filename="subject-import-template.csv"');
-  return c.body('code,name,subject_type,year_number,regulation_code,description\r\n');
+  return c.body('code,name,subject_type,year_number,regulation_code,description\r\nCS3401,Algorithms and Data Structures,THEORY,2,R2023,Core Subject\r\n');
+});
+
+subjectRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
+  const wb = xlsx.utils.book_new();
+  const ws = xlsx.utils.aoa_to_sheet([
+    ['code', 'name', 'subject_type', 'year_number', 'regulation_code', 'description'],
+    ['CS3401', 'Algorithms and Data Structures', 'THEORY', '2', 'R2023', 'Core Subject']
+  ]);
+  xlsx.utils.book_append_sheet(wb, ws, 'Subjects Template');
+  const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename="subject-import-template.xlsx"');
+  return c.body(buf);
+});
+
+subjectRoutes.get('/template/csv', requireSharedModuleAccess, (c) => {
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="subject-import-template.csv"');
+  return c.body('code,name,subject_type,year_number,regulation_code,description\r\nCS3401,Algorithms and Data Structures,THEORY,2,R2023,Core Subject\r\n');
 });
 
 subjectRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {

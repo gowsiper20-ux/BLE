@@ -7,6 +7,7 @@ import { StudentBleDeviceRepository } from '../repositories/student-ble-device.r
 import type { students } from '../db/schema/students';
 import { TabularImportError } from '../services/tabular-import';
 import { getDateInTimeZone } from '../utils/date';
+import * as xlsx from 'xlsx';
 
 export const studentRoutes = new Hono<{ Variables: { student: any } }>();
 const service = new StudentService();
@@ -89,9 +90,41 @@ async function getImportFile(c: any): Promise<{ file: File; buffer: Buffer } | R
 }
 
 studentRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+  const format = c.req.query('format')?.toLowerCase();
+  if (format === 'xlsx') {
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.aoa_to_sheet([
+      ['register_number', 'name', 'college_email', 'class_id'],
+      ['21IT001', 'Sample Student', 'student@sonatech.ac.in', 'II IT-A']
+    ]);
+    xlsx.utils.book_append_sheet(wb, ws, 'Students Template');
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    c.header('Content-Disposition', 'attachment; filename="student-import-template.xlsx"');
+    return c.body(buf);
+  }
   c.header('Content-Type', 'text/csv; charset=utf-8');
   c.header('Content-Disposition', 'attachment; filename="student-import-template.csv"');
-  return c.body('register_number,name,college_email,class_id\r\n');
+  return c.body('register_number,name,college_email,class_id\r\n21IT001,Sample Student,student@sonatech.ac.in,II IT-A\r\n');
+});
+
+studentRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
+  const wb = xlsx.utils.book_new();
+  const ws = xlsx.utils.aoa_to_sheet([
+    ['register_number', 'name', 'college_email', 'class_id'],
+    ['21IT001', 'Sample Student', 'student@sonatech.ac.in', 'II IT-A']
+  ]);
+  xlsx.utils.book_append_sheet(wb, ws, 'Students Template');
+  const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename="student-import-template.xlsx"');
+  return c.body(buf);
+});
+
+studentRoutes.get('/template/csv', requireSharedModuleAccess, (c) => {
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="student-import-template.csv"');
+  return c.body('register_number,name,college_email,class_id\r\n21IT001,Sample Student,student@sonatech.ac.in,II IT-A\r\n');
 });
 
 studentRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {

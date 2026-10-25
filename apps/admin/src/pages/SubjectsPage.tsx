@@ -165,7 +165,7 @@ export default function SubjectsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <PageHeader
-        title="Subjects Management"
+        title="Subjects"
         breadcrumbs={[
           { label: 'Home', path: '/dashboard' },
           { label: 'Subjects' },
@@ -173,7 +173,7 @@ export default function SubjectsPage() {
         actions={
           <div style={{ display: 'flex', gap: '10px' }}>
             <Button variant="secondary" icon="upload" onClick={() => setIsImportOpen(true)}>
-              Bulk Import Subjects
+              Import Subjects
             </Button>
             <Button icon="add" onClick={handleAdd}>
               Add Subject
@@ -265,11 +265,11 @@ export default function SubjectsPage() {
       <BulkImportModal
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
-        title="Bulk Import Subjects"
+        title="Import Subjects"
         entityName="subjects"
         sampleTemplateName="subject-import-template.csv"
         columnsNote="Columns: code, name, subject_type (THEORY/LAB/ELECTIVE/PROJECT/SEMINAR), year_number (1-4), regulation_code (e.g. R2023, R2021). Supports Excel (.xlsx) and CSV."
-        onDownloadTemplate={() => subjectService.downloadTemplate()}
+        onDownloadTemplate={(format) => subjectService.downloadTemplate(format)}
         onPreview={(file) => subjectService.previewImport(file)}
         onConfirm={(file) => subjectService.confirmImport(file)}
         onSuccess={() => {

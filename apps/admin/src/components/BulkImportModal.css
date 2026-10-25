@@ -29,16 +29,28 @@
   line-height: 1.4;
 }
 
+.bulk-import-modal__template-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+  .bulk-import-modal__template-buttons {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+}
+
 .bulk-import-modal__template-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
-  color: #005696;
-  background: #ffffff;
-  border: 1px solid rgba(0, 86, 150, 0.3);
   border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
@@ -46,10 +58,30 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.bulk-import-modal__template-btn:hover {
+.bulk-import-modal__template-btn--excel {
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+}
+
+.bulk-import-modal__template-btn--excel:hover {
+  background: #dcfce7;
+  border-color: #16a34a;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(22, 163, 74, 0.15);
+}
+
+.bulk-import-modal__template-btn--csv {
+  color: #005696;
   background: #f0f7fc;
+  border: 1px solid rgba(0, 86, 150, 0.3);
+}
+
+.bulk-import-modal__template-btn--csv:hover {
+  background: #e0f2fe;
   border-color: #005696;
   transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 86, 150, 0.15);
 }
 
 .bulk-import-modal__error {

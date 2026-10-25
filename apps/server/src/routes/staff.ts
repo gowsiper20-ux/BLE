@@ -7,6 +7,7 @@ import type { AuthPrincipal } from "@smart-attendance/shared";
 import { Buffer } from "node:buffer";
 import type { staff } from "../db/schema/staff";
 import { TabularImportError } from '../services/tabular-import';
+import * as xlsx from 'xlsx';
 
 export const staffRoutes = new Hono();
 const service = new StaffService();
@@ -84,9 +85,41 @@ async function getImportFile(c: any): Promise<{ file: File; buffer: Buffer } | R
 }
 
 staffRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+  const format = c.req.query('format')?.toLowerCase();
+  if (format === 'xlsx') {
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.aoa_to_sheet([
+      ['staff_code', 'name', 'college_email'],
+      ['IT001', 'Sample Teacher', 'faculty@sonatech.ac.in']
+    ]);
+    xlsx.utils.book_append_sheet(wb, ws, 'Staff Template');
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    c.header('Content-Disposition', 'attachment; filename="faculty-import-template.xlsx"');
+    return c.body(buf);
+  }
   c.header('Content-Type', 'text/csv; charset=utf-8');
   c.header('Content-Disposition', 'attachment; filename="faculty-import-template.csv"');
-  return c.body('staff_code,name,college_email\r\n');
+  return c.body('staff_code,name,college_email\r\nIT001,Sample Teacher,faculty@sonatech.ac.in\r\n');
+});
+
+staffRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
+  const wb = xlsx.utils.book_new();
+  const ws = xlsx.utils.aoa_to_sheet([
+    ['staff_code', 'name', 'college_email'],
+    ['IT001', 'Sample Teacher', 'faculty@sonatech.ac.in']
+  ]);
+  xlsx.utils.book_append_sheet(wb, ws, 'Staff Template');
+  const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename="faculty-import-template.xlsx"');
+  return c.body(buf);
+});
+
+staffRoutes.get('/template/csv', requireSharedModuleAccess, (c) => {
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="faculty-import-template.csv"');
+  return c.body('staff_code,name,college_email\r\nIT001,Sample Teacher,faculty@sonatech.ac.in\r\n');
 });
 
 staffRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {

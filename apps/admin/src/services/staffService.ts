@@ -86,7 +86,7 @@ export const staffService = {
     return res.data;
   },
 
-  downloadTemplate: () => api.download('/api/staff/import/template'),
+  downloadTemplate: (format: 'csv' | 'xlsx' = 'csv') => api.download(`/api/staff/import/template?format=${format}`),
 
   // --- HOD Approvals & Notifications ---
   getPendingApprovals: async () => {

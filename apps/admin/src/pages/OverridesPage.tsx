@@ -103,7 +103,7 @@ export default function OverridesPage() {
         replacementSubjectId: replacementSubjectId || undefined,
         reason: reason.trim() || undefined,
       });
-      showToast('success', 'Timetable override created successfully');
+      showToast('success', 'Substitution created successfully');
       setIsModalOpen(false);
       setSelectedTimetableId('');
       setReplacementStaffId('');
@@ -111,7 +111,7 @@ export default function OverridesPage() {
       setReason('');
       fetchOverrides();
     } catch (err: any) {
-      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to create override');
+      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to create substitution');
     } finally {
       setSaving(false);
     }
@@ -121,11 +121,11 @@ export default function OverridesPage() {
     if (!overrideToDelete) return;
     try {
       await timetableService.deleteOverride(overrideToDelete.id);
-      showToast('success', 'Override deleted successfully');
+      showToast('success', 'Substitution cancelled successfully');
       setOverrideToDelete(null);
       fetchOverrides();
     } catch (err: any) {
-      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to delete override');
+      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to cancel substitution');
     }
   };
 
@@ -133,8 +133,8 @@ export default function OverridesPage() {
     { key: 'overrideDate', label: 'Date', render: (val: any) => new Date(val).toLocaleDateString() },
     { key: 'className', label: 'Class' },
     { key: 'periodName', label: 'Period' },
-    { key: 'originalSubjectName', label: 'Original Subject' },
-    { key: 'replacementStaffName', label: 'Replacement Staff (Substitute)', render: (val: any) => val || '—' },
+    { key: 'originalSubjectName', label: 'Subject' },
+    { key: 'replacementStaffName', label: 'Substitute Teacher', render: (val: any) => val || '—' },
     { key: 'reason', label: 'Reason', render: (val: any) => val || '—' },
     {
       key: 'status',
@@ -148,16 +148,16 @@ export default function OverridesPage() {
   return (
     <div className="overrides-page">
       <PageHeader
-        title="Timetable Overrides &amp; Substitutions"
+        title="Substitutions"
         breadcrumbs={[
           { label: 'Home', path: '/dashboard' },
           { label: 'Timetable', path: '/timetable' },
-          { label: 'Overrides & Substitutions' },
+          { label: 'Substitutions' },
         ]}
-        subtitle="Manage HOD-authorized faculty substitutions and date-specific class schedule modifications"
+        subtitle="Assign substitute teachers for scheduled classes"
         actions={
           <Button onClick={handleOpenModal} icon="add">
-            Add Substitution / Override
+            Add Substitution
           </Button>
         }
       />
@@ -171,9 +171,9 @@ export default function OverridesPage() {
       <div className="card" style={{ padding: '24px' }}>
         {overridesError && <div role="alert">{overridesError}</div>}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>Active HOD Substitutions &amp; Schedule Overrides</h3>
+          <h3 style={{ margin: 0 }}>Active Substitutions</h3>
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Total Overrides: {overrides.length}
+            Total Substitutions: {overrides.length}
           </span>
         </div>
         <DataTable
@@ -181,14 +181,14 @@ export default function OverridesPage() {
           columns={columns}
           loading={loading}
           keyField="id"
-          emptyMessage="No timetable overrides or substitutions are scheduled. Click 'Add Substitution / Override' to assign substitute faculty."
+          emptyMessage="No substitutions scheduled. Click 'Add Substitution' to assign a substitute teacher."
           actions={(row: TimetableOverride) => (
             <Button
               variant="danger"
               size="sm"
               onClick={() => setOverrideToDelete(row)}
             >
-              Cancel / Delete
+              Remove
             </Button>
           )}
         />
@@ -199,14 +199,14 @@ export default function OverridesPage() {
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          title="Assign Faculty Substitution / Timetable Override"
+          title="Assign Substitute Teacher"
           footer={
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <Button variant="secondary" onClick={() => setIsModalOpen(false)} disabled={saving}>
                 Cancel
               </Button>
               <Button variant="primary" onClick={handleCreateOverride} disabled={saving || !selectedTimetableId}>
-                {saving ? 'Saving...' : 'Authorize Substitution'}
+                {saving ? 'Saving...' : 'Save Substitution'}
               </Button>
             </div>
           }
@@ -214,7 +214,7 @@ export default function OverridesPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <Input
               type="date"
-              label="Override Date *"
+              label="Date *"
               value={overrideDate}
               onChange={(e) => setOverrideDate(e.target.value)}
               required
@@ -237,7 +237,7 @@ export default function OverridesPage() {
             />
 
             <Select
-              label="Select Scheduled Period to Substitute *"
+              label="Select Class Period *"
               value={selectedTimetableId}
               onChange={setSelectedTimetableId}
               options={[
@@ -250,11 +250,11 @@ export default function OverridesPage() {
             />
 
             <Select
-              label="Substitute Faculty (Replacement Staff) *"
+              label="Substitute Teacher *"
               value={replacementStaffId}
               onChange={setReplacementStaffId}
               options={[
-                { value: '', label: '-- Select Substitute Faculty --' },
+                { value: '', label: '-- Select Substitute Teacher --' },
                 ...staffList.map((s: any) => ({
                   value: s.id,
                   label: `${s.name} (${s.staffCode})`,
@@ -263,7 +263,7 @@ export default function OverridesPage() {
             />
 
             <Select
-              label="Replacement Subject (Optional)"
+              label="Substitute Subject (Optional)"
               value={replacementSubjectId}
               onChange={setReplacementSubjectId}
               options={[
@@ -276,10 +276,10 @@ export default function OverridesPage() {
             />
 
             <Input
-              label="Reason for Substitution / Override"
+              label="Reason for Substitution"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Faculty on official duty / conference / leave approved by HOD"
+              placeholder="e.g. Teacher on leave or official duty"
             />
           </div>
         </Modal>
@@ -289,10 +289,10 @@ export default function OverridesPage() {
       {overrideToDelete && (
         <ConfirmDialog
           isOpen={!!overrideToDelete}
-          title="Cancel Substitution Override?"
-          message={`Are you sure you want to cancel the substitution for ${overrideToDelete.className || 'this period'} on ${overrideToDelete.overrideDate ? new Date(overrideToDelete.overrideDate).toLocaleDateString() : 'selected date'}? Original faculty schedule will be restored.`}
-          confirmLabel="Cancel Substitution"
-          cancelLabel="Close"
+          title="Cancel Substitution?"
+          message={`Are you sure you want to cancel the substitution for ${overrideToDelete.className || 'this period'} on ${overrideToDelete.overrideDate ? new Date(overrideToDelete.overrideDate).toLocaleDateString() : 'selected date'}? The regular teacher will take this class.`}
+          confirmLabel="Confirm Cancellation"
+          cancelLabel="Keep"
           onConfirm={handleDeleteOverride}
           onClose={() => setOverrideToDelete(null)}
           variant="danger"

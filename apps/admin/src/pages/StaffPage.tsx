@@ -120,7 +120,7 @@ export default function StaffPage() {
       <div className="staff-page__header-row">
         <div>
           <PageHeader
-            title="Faculty &amp; Staff Directory"
+            title="Faculty &amp; Staff"
             breadcrumbs={[{ label: 'Home', path: '/dashboard' }, { label: 'Faculty & Staff' }]}
           />
         </div>
@@ -131,7 +131,7 @@ export default function StaffPage() {
             onClick={() => setImportModalOpen(true)}
           >
             <Icon name="upload" size={16} />
-            <span>Bulk Import Faculty</span>
+            <span>Import Staff</span>
           </button>
           <button
             type="button"
@@ -139,7 +139,7 @@ export default function StaffPage() {
             onClick={() => openForm()}
           >
             <Icon name="add" size={16} />
-            <span>Add Faculty</span>
+            <span>Add Staff</span>
           </button>
         </div>
       </div>
@@ -222,11 +222,11 @@ export default function StaffPage() {
                           <div className="empty-state-icon">
                             <Icon name="staff" size={40} />
                           </div>
-                          <h3>No Faculty Records Found</h3>
+                          <h3>No Staff Records Found</h3>
                           <p>
                             {search || status
                               ? 'No staff members match the active filters.'
-                              : 'No faculty members are registered yet. Import your staff roster via Excel or add faculty members individually.'}
+                              : 'No staff members added yet. Import staff using Excel or add them individually.'}
                           </p>
                           <div className="empty-state-actions">
                             <button
@@ -235,7 +235,7 @@ export default function StaffPage() {
                               onClick={() => setImportModalOpen(true)}
                             >
                               <Icon name="upload" size={16} />
-                              <span>Bulk Import Faculty</span>
+                              <span>Import Staff</span>
                             </button>
                             <button
                               type="button"
@@ -440,11 +440,11 @@ export default function StaffPage() {
       <BulkImportModal
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
-        title="Bulk Import Faculty Directory"
+        title="Import Staff"
         entityName="faculty"
         sampleTemplateName="faculty-import-template.csv"
-        columnsNote="Format: staff_code, name, college_email. Supports Excel (.xlsx) and CSV."
-        onDownloadTemplate={() => staffService.downloadTemplate()}
+        columnsNote="Columns: staff_code, name, college_email. Supports Excel (.xlsx) and CSV."
+        onDownloadTemplate={(format) => staffService.downloadTemplate(format)}
         onPreview={(file) => staffService.previewImport(file)}
         onConfirm={(file) => staffService.confirmImport(file)}
         onSuccess={() => {

@@ -142,7 +142,7 @@ export default function StudentsPage() {
       <div className="students-page__header-row">
         <div>
           <PageHeader
-            title="Students Directory"
+            title="Students"
             breadcrumbs={[{ label: 'Home', path: '/dashboard' }, { label: 'Students' }]}
           />
         </div>
@@ -153,7 +153,7 @@ export default function StudentsPage() {
             onClick={() => setImportModalOpen(true)}
           >
             <Icon name="upload" size={16} />
-            <span>Bulk Import Excel / CSV</span>
+            <span>Import Students</span>
           </button>
           <button
             type="button"
@@ -258,7 +258,7 @@ export default function StudentsPage() {
                       <p>
                         {search || classId || status
                           ? 'No students matched the active search filters.'
-                          : 'The student roster is currently empty. Upload your class Excel or register students to begin.'}
+                          : 'No students added yet. Upload an Excel or CSV file or add students to get started.'}
                       </p>
                       <div className="empty-state-actions">
                         <button
@@ -267,7 +267,7 @@ export default function StudentsPage() {
                           onClick={() => setImportModalOpen(true)}
                         >
                           <Icon name="upload" size={16} />
-                          <span>Bulk Import Excel</span>
+                          <span>Import Students</span>
                         </button>
                         <button
                           type="button"
@@ -473,11 +473,11 @@ export default function StudentsPage() {
       <BulkImportModal
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
-        title="Bulk Import Students Roster"
+        title="Import Students"
         entityName="students"
         sampleTemplateName="student-import-template.csv"
-        columnsNote="Format: register_number, name, college_email, class_id. Supports Excel (.xlsx) and CSV."
-        onDownloadTemplate={() => studentService.downloadTemplate()}
+        columnsNote="Columns: register_number, name, college_email, class_id. Supports Excel (.xlsx) and CSV."
+        onDownloadTemplate={(format) => studentService.downloadTemplate(format)}
         onPreview={(file) => studentService.previewImport(file)}
         onConfirm={(file) => studentService.confirmImport(file)}
         onSuccess={() => {
