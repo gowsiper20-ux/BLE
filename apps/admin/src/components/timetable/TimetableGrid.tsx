@@ -37,30 +37,44 @@ export interface SubjectTheme {
   badgeText: string;
 }
 
-const SUBJECT_THEMES: SubjectTheme[] = [
-  { bg: '#eff6ff', border: '#bfdbfe', accent: '#005696', text: '#003865', badgeBg: '#dbeafe', badgeText: '#005696' }, // Sona Royal Blue
-  { bg: '#f0fdf4', border: '#bbf7d0', accent: '#16a34a', text: '#14532d', badgeBg: '#dcfce7', badgeText: '#166534' }, // Emerald
-  { bg: '#faf5ff', border: '#e9d5ff', accent: '#7c3aed', text: '#581c87', badgeBg: '#f3e8ff', badgeText: '#6b21a8' }, // Purple
-  { bg: '#fffbeb', border: '#fde68a', accent: '#d97706', text: '#78350f', badgeBg: '#fef3c7', badgeText: '#92400e' }, // Amber
-  { bg: '#ecfeff', border: '#a5f3fc', accent: '#0891b2', text: '#164e63', badgeBg: '#cffafe', badgeText: '#155e75' }, // Teal
-  { bg: '#fff1f2', border: '#fecdd3', accent: '#e11d48', text: '#881337', badgeBg: '#ffe4e6', badgeText: '#9f1239' }, // Rose
-  { bg: '#f8fafc', border: '#cbd5e1', accent: '#334155', text: '#0f172a', badgeBg: '#e2e8f0', badgeText: '#334155' }, // Slate
-  { bg: '#fdf4ff', border: '#f5d0fe', accent: '#c026d3', text: '#701a75', badgeBg: '#fae8ff', badgeText: '#86198f' }, // Fuchsia
+export function isLabSubject(code?: string, name?: string): boolean {
+  const text = `${code || ''} ${name || ''}`.toLowerCase();
+  return text.includes('lab') || text.includes('laboratory') || text.includes('practical');
+}
+
+/**
+ * Dignified, institutional palette for Sona College of Technology:
+ * Clean white cards with crisp slate borders, deep readable typography, and refined accent strips.
+ */
+const LAB_THEME: SubjectTheme = {
+  bg: '#f0fdf4',
+  border: '#bbf7d0',
+  accent: '#15803d',
+  text: '#0f172a',
+  badgeBg: '#dcfce7',
+  badgeText: '#15803d',
+};
+
+const THEORY_THEMES: SubjectTheme[] = [
+  { bg: '#ffffff', border: '#e2e8f0', accent: '#005696', text: '#0f172a', badgeBg: '#eff6ff', badgeText: '#005696' }, // Sona Royal Blue
+  { bg: '#ffffff', border: '#e2e8f0', accent: '#334155', text: '#0f172a', badgeBg: '#f1f5f9', badgeText: '#334155' }, // Slate Navy
+  { bg: '#ffffff', border: '#e2e8f0', accent: '#4338ca', text: '#0f172a', badgeBg: '#eef2ff', badgeText: '#4338ca' }, // Academic Indigo
+  { bg: '#ffffff', border: '#e2e8f0', accent: '#0284c7', text: '#0f172a', badgeBg: '#f0f9ff', badgeText: '#0284c7' }, // Steel Blue
+  { bg: '#ffffff', border: '#e2e8f0', accent: '#0d9488', text: '#0f172a', badgeBg: '#f0fdfa', badgeText: '#0f766e' }, // Muted Teal
+  { bg: '#ffffff', border: '#e2e8f0', accent: '#b45309', text: '#0f172a', badgeBg: '#fffbeb', badgeText: '#b45309' }, // Muted Amber
 ];
 
 export function getSubjectTheme(code?: string, name?: string): SubjectTheme {
+  if (isLabSubject(code, name)) {
+    return LAB_THEME;
+  }
   const key = (code || name || 'GENERAL').toUpperCase();
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     hash = key.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const index = Math.abs(hash) % SUBJECT_THEMES.length;
-  return SUBJECT_THEMES[index];
-}
-
-export function isLabSubject(code?: string, name?: string): boolean {
-  const text = `${code || ''} ${name || ''}`.toLowerCase();
-  return text.includes('lab') || text.includes('laboratory') || text.includes('practical');
+  const index = Math.abs(hash) % THEORY_THEMES.length;
+  return THEORY_THEMES[index];
 }
 
 interface HoveredSlot {
@@ -204,17 +218,17 @@ export default function TimetableGrid({
         {/* Left Side: Summary Badges */}
         <div className="timetable-toolbar__stats">
           <div className="timetable-stat-pill timetable-stat-pill--primary" title="Total Periods Scheduled">
-            <span className="timetable-stat-icon">📅</span>
+            <Icon name="timetable" size={13} className="timetable-stat-icon" />
             <span className="timetable-stat-val">{stats.scheduled}</span>
             <span className="timetable-stat-lbl">/ {stats.totalSlots} Slots</span>
           </div>
           <div className="timetable-stat-pill" title="Distinct Subjects">
-            <span className="timetable-stat-icon">📖</span>
+            <Icon name="subjects" size={13} className="timetable-stat-icon" />
             <span className="timetable-stat-val">{stats.uniqueSubjects}</span>
             <span className="timetable-stat-lbl">Subjects</span>
           </div>
           <div className="timetable-stat-pill timetable-stat-pill--lab" title="Laboratory Practical Sessions">
-            <span className="timetable-stat-icon">🔬</span>
+            <Icon name="flask" size={13} className="timetable-stat-icon" />
             <span className="timetable-stat-val">{stats.labCount}</span>
             <span className="timetable-stat-lbl">Labs</span>
           </div>
@@ -226,7 +240,7 @@ export default function TimetableGrid({
           <input
             type="text"
             className="timetable-search-input"
-            placeholder="Highlight Subject or Faculty..."
+            placeholder="Search subject or faculty..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -475,7 +489,7 @@ export default function TimetableGrid({
       </div>
 
       {/* ========================================================
-          PLEASANT HOVER DETAIL POP-UP (Subject details on cursor hover)
+          PROFESSIONAL HOVER DETAIL CARD (Institutional Sona Styling)
           ======================================================== */}
       {hovered && (
         <div
@@ -485,14 +499,14 @@ export default function TimetableGrid({
             left: `${hovered.left}px`,
           }}
         >
-          {/* Card Accent Top Banner */}
+          {/* Card Accent Top Header */}
           <div
             className="timetable-popup__header"
-            style={{ borderLeftColor: hovered.theme.accent }}
+            style={{ borderTopColor: hovered.theme.accent }}
           >
-            <div className="timetable-popup__badges">
+            <div className="timetable-popup__top-row">
               <span
-                className="timetable-popup__code"
+                className="timetable-popup__code-badge"
                 style={{
                   backgroundColor: hovered.theme.badgeBg,
                   color: hovered.theme.badgeText,
@@ -500,53 +514,66 @@ export default function TimetableGrid({
               >
                 {hovered.entry.subjectCode || 'SUBJECT'}
               </span>
-              {hovered.isLab ? (
-                <span className="timetable-popup__lab-badge">Laboratory Practical</span>
-              ) : (
-                <span className="timetable-popup__type-badge">Theory</span>
-              )}
+              <span
+                className={`timetable-popup__type-pill ${
+                  hovered.isLab ? 'timetable-popup__type-pill--lab' : 'timetable-popup__type-pill--theory'
+                }`}
+              >
+                {hovered.isLab ? 'Laboratory Practical' : 'Theory Course'}
+              </span>
             </div>
-            <h3 className="timetable-popup__title">{hovered.entry.subjectName}</h3>
+            <h4 className="timetable-popup__title">{hovered.entry.subjectName}</h4>
           </div>
 
           <div className="timetable-popup__body">
             {/* Faculty In-Charge */}
-            <div className="timetable-popup__row">
-              <span className="timetable-popup__icon">👤</span>
-              <div className="timetable-popup__field">
+            <div className="timetable-popup__item">
+              <div className="timetable-popup__icon-wrap">
+                <Icon name="user" size={13} />
+              </div>
+              <div className="timetable-popup__content">
                 <span className="timetable-popup__label">Faculty In-Charge</span>
-                <span className="timetable-popup__value timetable-popup__value--faculty">
+                <span
+                  className={`timetable-popup__value ${
+                    hovered.entry.staffName ? 'timetable-popup__value--faculty' : 'timetable-popup__value--unassigned'
+                  }`}
+                >
                   {hovered.entry.staffName || 'Faculty Not Assigned'}
                 </span>
               </div>
             </div>
 
             {/* Timing & Period */}
-            <div className="timetable-popup__row">
-              <span className="timetable-popup__icon">⏰</span>
-              <div className="timetable-popup__field">
-                <span className="timetable-popup__label">Schedule & Period</span>
+            <div className="timetable-popup__item">
+              <div className="timetable-popup__icon-wrap">
+                <Icon name="clock" size={13} />
+              </div>
+              <div className="timetable-popup__content">
+                <span className="timetable-popup__label">Day & Period Schedule</span>
                 <span className="timetable-popup__value">
-                  {hovered.dayLabel} · {hovered.period.name} ({hovered.period.startTime.substring(0, 5)} - {hovered.period.endTime.substring(0, 5)})
+                  {hovered.dayLabel} · {hovered.period.name} ({hovered.period.startTime.substring(0, 5)} – {hovered.period.endTime.substring(0, 5)})
                 </span>
               </div>
             </div>
 
-            {/* Class Section */}
-            {classNameText && (
-              <div className="timetable-popup__row">
-                <span className="timetable-popup__icon">🏫</span>
-                <div className="timetable-popup__field">
-                  <span className="timetable-popup__label">Department & Class</span>
-                  <span className="timetable-popup__value">IT · {classNameText}</span>
-                </div>
+            {/* Class & Department */}
+            <div className="timetable-popup__item">
+              <div className="timetable-popup__icon-wrap">
+                <Icon name="academic" size={13} />
               </div>
-            )}
+              <div className="timetable-popup__content">
+                <span className="timetable-popup__label">Class & Department</span>
+                <span className="timetable-popup__value">
+                  {classNameText ? `${classNameText} · ` : ''}Department of Information Technology
+                </span>
+              </div>
+            </div>
           </div>
 
           {!readOnly && (
             <div className="timetable-popup__footer">
-              <span>💡 Click slot to modify schedule or faculty</span>
+              <Icon name="info" size={12} />
+              <span>Click slot to edit schedule or faculty assignment</span>
             </div>
           )}
         </div>

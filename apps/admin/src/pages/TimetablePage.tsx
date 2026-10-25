@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Select from '../components/Select';
+import Icon from '../components/Icon';
 import { useApi } from '../hooks/useApi';
 import { timetableService } from '../services/timetableService';
 import { useToast } from '../hooks/useToast';
@@ -162,7 +163,9 @@ export default function TimetablePage() {
       ) : (
         <div className="timetable-empty-card">
           <div className="empty-state">
-            <div className="empty-state-icon">📅</div>
+            <div className="empty-state-icon-wrap">
+              <Icon name="timetable" size={38} className="empty-state-icon-svg" />
+            </div>
             <h3>Select Timetable Parameters</h3>
             <p>Please select an Academic Year and a Class above to load the weekly schedule.</p>
           </div>

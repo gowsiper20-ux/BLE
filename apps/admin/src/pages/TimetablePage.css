@@ -134,7 +134,13 @@
   color: var(--text-secondary);
 }
 
-.empty-state-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
+.empty-state-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.empty-state-icon-svg {
+  color: #94a3b8;
 }

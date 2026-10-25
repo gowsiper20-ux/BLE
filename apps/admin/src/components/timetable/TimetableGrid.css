@@ -51,7 +51,7 @@
 }
 
 .timetable-stat-pill--primary {
-  background: #eff6ff;
+  background: #f8fbff;
   border-color: #bfdbfe;
   color: #005696;
 }
@@ -59,12 +59,14 @@
 .timetable-stat-pill--lab {
   background: #f0fdf4;
   border-color: #bbf7d0;
-  color: #166534;
+  color: #15803d;
 }
 
 .timetable-stat-icon {
-  font-size: 13px;
-  line-height: 1;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .timetable-stat-val {
@@ -441,22 +443,23 @@
 }
 
 /* ============================================================
-   SUBJECT-ALONE CARD (Clean, Pleasant, Clear Display)
+   SUBJECT-ALONE CARD (Clean, Professional Academic Display)
    ============================================================ */
 .timetable-subject-card {
   width: 100%;
   height: 100%;
   padding: 5px 8px;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  border-left-width: 3.5px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  border-left-width: 3px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
+  gap: 2.5px;
   overflow: hidden;
-  transition: border-color 0.15s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .timetable-subject-card__top {
@@ -467,24 +470,25 @@
 }
 
 .timetable-subject-code {
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 10.5px;
+  font-weight: 700;
   padding: 1.5px 5px;
-  border-radius: 4px;
-  letter-spacing: 0.03em;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   line-height: 1.1;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .timetable-lab-pill {
   font-size: 8.5px;
-  font-weight: 800;
-  background: #16a34a;
+  font-weight: 700;
+  background: #15803d;
   color: #ffffff;
   padding: 1px 4px;
   border-radius: 3px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   line-height: 1.1;
   flex-shrink: 0;
 }
@@ -492,7 +496,8 @@
 .timetable-subject-name {
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.22;
+  color: #0f172a;
+  line-height: 1.25;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -502,15 +507,15 @@
 }
 
 /* ============================================================
-   HOVER DETAIL POP-UP (Appears cleanly on cursor hover)
+   PROFESSIONAL HOVER DETAIL POP-UP CARD
    ============================================================ */
 .timetable-popup {
   position: fixed;
-  width: 290px;
+  width: 300px;
   background: #ffffff;
   border-radius: 10px;
   border: 1px solid #cbd5e1;
-  box-shadow: 0 16px 36px -4px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.15), 0 4px 10px rgba(15, 23, 42, 0.05);
   z-index: 9999;
   pointer-events: none; /* Smooth cursor pass-through */
   animation: popupFade 0.15s cubic-bezier(0.16, 1, 0.3, 1);
@@ -539,45 +544,48 @@
 }
 
 .timetable-popup__header {
-  padding: 10px 14px;
+  padding: 11px 14px 10px 14px;
   background: #f8fafc;
+  border-top: 3.5px solid #005696;
   border-bottom: 1px solid #e2e8f0;
-  border-left: 4px solid #005696;
 }
 
-.timetable-popup__badges {
+.timetable-popup__top-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
   margin-bottom: 5px;
 }
 
-.timetable-popup__code {
-  font-size: 11.5px;
-  font-weight: 800;
-  padding: 2px 6px;
+.timetable-popup__code-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
   border-radius: 4px;
   letter-spacing: 0.03em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-.timetable-popup__lab-badge {
-  font-size: 9.5px;
-  font-weight: 700;
-  background: #dcfce7;
-  color: #166534;
-  border: 1px solid #bbf7d0;
-  padding: 1.5px 6px;
-  border-radius: 9999px;
-}
-
-.timetable-popup__type-badge {
-  font-size: 9.5px;
+.timetable-popup__type-pill {
+  font-size: 10px;
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  letter-spacing: 0.02em;
+}
+
+.timetable-popup__type-pill--theory {
   background: #f1f5f9;
   color: #475569;
-  padding: 1.5px 6px;
-  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+}
+
+.timetable-popup__type-pill--lab {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
 }
 
 .timetable-popup__title {
@@ -585,47 +593,53 @@
   font-size: 13px;
   font-weight: 700;
   color: #0f172a;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .timetable-popup__body {
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
+  background: #ffffff;
 }
 
-.timetable-popup__row {
+.timetable-popup__item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 9px;
 }
 
-.timetable-popup__icon {
-  font-size: 14px;
-  line-height: 1.3;
+.timetable-popup__icon-wrap {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-.timetable-popup__field {
+.timetable-popup__content {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 1.5px;
 }
 
 .timetable-popup__label {
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
 }
 
 .timetable-popup__value {
   font-size: 12px;
   color: #1e293b;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .timetable-popup__value--faculty {
@@ -633,14 +647,21 @@
   font-weight: 700;
 }
 
+.timetable-popup__value--unassigned {
+  color: #94a3b8;
+  font-style: italic;
+}
+
 .timetable-popup__footer {
   padding: 6px 14px;
-  background: #f1f5f9;
+  background: #f8fafc;
   border-top: 1px solid #e2e8f0;
   font-size: 10.5px;
   color: #64748b;
-  font-weight: 500;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
 
 /* ============================================================
