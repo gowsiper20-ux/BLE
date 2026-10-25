@@ -29,6 +29,11 @@ export class TimetableOverrideService {
     const timetable = await this.timetableRepo.findById(data.timetableId);
     if (!timetable) throw new Error("TIMETABLE_NOT_FOUND");
 
+    const existing = await this.repo.findByTimetableAndDate(data.timetableId, data.overrideDate);
+    if (existing && existing.status === "ACTIVE") {
+      throw new Error("OVERRIDE_ALREADY_EXISTS");
+    }
+
     if (data.replacementStaffId) {
       const staffMember = await this.staffRepo.getStaffById(data.replacementStaffId);
       if (!staffMember) throw new Error("STAFF_NOT_FOUND");

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { StaffService } from "../services/staff.service";
 import { TimetableRepository } from "../repositories/timetable.repository";
-import { requireSharedModuleAccess, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireHodOrAdmin, requireSharedModuleAccess, requireStaffOrAdmin, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 import { localAuthService } from "../services/local-auth.service";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 import { Buffer } from "node:buffer";
@@ -51,10 +51,11 @@ function handleStaffError(c: any, error: any) {
 function getActor(c: any) {
   const user = c.get('user');
   return {
-    actorId: user?.roles.includes('FACULTY') ? undefined : user?.id,
+    actorId: user?.roles?.includes('FACULTY') ? undefined : user?.id,
     actorName: user?.name,
-    actorRole: user?.roles?.[0],
-    ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim(),
+    actorRole: user?.roles?.[0] || 'STAFF',
+    actorEmail: user?.collegeEmail,
+    ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || '127.0.0.1',
     userAgent: c.req.header('user-agent'),
   };
 }
@@ -84,7 +85,7 @@ async function getImportFile(c: any): Promise<{ file: File; buffer: Buffer } | R
   return { file, buffer: Buffer.from(await file.arrayBuffer()) };
 }
 
-staffRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+staffRoutes.get('/import/template', requireSharedDashboardRead, (c) => {
   const format = c.req.query('format')?.toLowerCase();
   if (format === 'xlsx') {
     const wb = xlsx.utils.book_new();
@@ -103,7 +104,7 @@ staffRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
   return c.body('staff_code,name,college_email\r\nIT001,Sample Teacher,faculty@sonatech.ac.in\r\n');
 });
 
-staffRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
+staffRoutes.get('/template/xlsx', requireSharedDashboardRead, (c) => {
   const wb = xlsx.utils.book_new();
   const ws = xlsx.utils.aoa_to_sheet([
     ['staff_code', 'name', 'college_email'],
@@ -116,13 +117,13 @@ staffRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
   return c.body(buf);
 });
 
-staffRoutes.get('/template/csv', requireSharedModuleAccess, (c) => {
+staffRoutes.get('/template/csv', requireSharedDashboardRead, (c) => {
   c.header('Content-Type', 'text/csv; charset=utf-8');
   c.header('Content-Disposition', 'attachment; filename="faculty-import-template.csv"');
   return c.body('staff_code,name,college_email\r\nIT001,Sample Teacher,faculty@sonatech.ac.in\r\n');
 });
 
-staffRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
+staffRoutes.post('/import/preview', requireHodOrAdmin, async (c) => {
   try {
     const upload = await getImportFile(c);
     if (upload instanceof Response) return upload;
@@ -133,7 +134,7 @@ staffRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
   }
 });
 
-staffRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
+staffRoutes.post('/import/confirm', requireHodOrAdmin, async (c) => {
   try {
     const upload = await getImportFile(c);
     if (upload instanceof Response) return upload;
@@ -145,7 +146,7 @@ staffRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
 });
 
 // --- Pending Staff Approvals (HOD / Admin Oversight) ---
-staffRoutes.get('/approvals/pending', requireSharedModuleAccess, async (c) => {
+staffRoutes.get('/approvals/pending', requireHodOrAdmin, async (c) => {
   try {
     const list = await localAuthService.getPendingStaffRequests();
     return c.json({ success: true, data: list, count: list.length });
@@ -154,7 +155,7 @@ staffRoutes.get('/approvals/pending', requireSharedModuleAccess, async (c) => {
   }
 });
 
-staffRoutes.get('/approvals/all', requireSharedModuleAccess, async (c) => {
+staffRoutes.get('/approvals/all', requireHodOrAdmin, async (c) => {
   try {
     const list = await localAuthService.getAllStaffRequests();
     return c.json({ success: true, data: list, count: list.length });
@@ -163,30 +164,30 @@ staffRoutes.get('/approvals/all', requireSharedModuleAccess, async (c) => {
   }
 });
 
-staffRoutes.post('/approvals/:id/approve', requireSharedModuleAccess, async (c) => {
+staffRoutes.post('/approvals/:id/approve', requireHodOrAdmin, async (c) => {
   try {
     const id = c.req.param('id');
     if (!id) return c.json({ success: false, error: { message: 'Missing approval id' } }, 400);
-    const result = await localAuthService.approveStaffRequest(id);
+    const result = await localAuthService.approveStaffRequest(id, getActor(c));
     return c.json(result);
   } catch (error: any) {
     return handleStaffError(c, error);
   }
 });
 
-staffRoutes.post('/approvals/:id/reject', requireSharedModuleAccess, async (c) => {
+staffRoutes.post('/approvals/:id/reject', requireHodOrAdmin, async (c) => {
   try {
     const id = c.req.param('id');
     if (!id) return c.json({ success: false, error: { message: 'Missing approval id' } }, 400);
     const body = await c.req.json().catch(() => ({})) as { reason?: string };
-    const result = await localAuthService.rejectStaffRequest(id, body.reason);
+    const result = await localAuthService.rejectStaffRequest(id, body.reason, getActor(c));
     return c.json(result);
   } catch (error: any) {
     return handleStaffError(c, error);
   }
 });
 
-staffRoutes.post('/', requireSharedModuleAccess, async (c) => {
+staffRoutes.post('/', requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json() as Record<string, unknown>;
     if (
@@ -209,7 +210,7 @@ staffRoutes.post('/', requireSharedModuleAccess, async (c) => {
   }
 });
 
-staffRoutes.put('/:id', requireSharedModuleAccess, async (c) => {
+staffRoutes.put('/:id', requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json() as Record<string, unknown>;
     const update: Partial<typeof staff.$inferInsert> = {};
@@ -231,7 +232,7 @@ staffRoutes.put('/:id', requireSharedModuleAccess, async (c) => {
   }
 });
 
-staffRoutes.patch('/:id/status', requireSharedModuleAccess, async (c) => {
+staffRoutes.patch('/:id/status', requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json() as { status?: string };
     if (!['ACTIVE', 'INACTIVE'].includes(body.status || '')) {
@@ -245,7 +246,7 @@ staffRoutes.patch('/:id/status', requireSharedModuleAccess, async (c) => {
 });
 
 // Shared application users can view the actual faculty/staff directory.
-staffRoutes.get("/", requireSharedModuleAccess, async (c) => {
+staffRoutes.get("/", requireSharedDashboardRead, async (c) => {
   try {
     const search = c.req.query("search");
     const status = c.req.query("status");
@@ -267,7 +268,7 @@ staffRoutes.get("/:id", requireStaffOrAdmin, async (c) => {
     const targetId = c.req.param("id")!;
 
     const isSelf = user.id === targetId;
-    const isLeadership = user.roles.some((r: string) => ["ADMIN", "HOD", "DEPUTY_HOD", "FACULTY"].includes(r));
+    const isLeadership = user.roles.some((r: string) => ["ADMIN", "HOD", "DEPUTY_HOD"].includes(r));
 
     if (!isSelf && !isLeadership) {
       return c.json({ success: false, error: { code: 'FORBIDDEN', message: "Forbidden: You may only view your own profile." } }, 403);

@@ -5,7 +5,8 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { facultyAuthAccounts, staffCredentials, staffApprovalRequests } from '../db/schema/auth';
 import { roles, staff, staffRoles } from '../db/schema/staff';
-import type { AuthPrincipal } from '@smart-attendance/shared';
+import type { AuthPrincipal, UserRole } from '@smart-attendance/shared';
+import { AuditService } from './audit.service';
 
 const SESSION_LIFETIME_SECONDS = 60 * 60 * 8;
 const BCRYPT_ROUNDS = 12;
@@ -28,6 +29,7 @@ export type LoginResult =
 
 export class LocalAuthService {
   private readonly dummyHash = bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
+  private readonly auditService = new AuditService();
 
   private createSessionToken(staffId: string, sessionVersion: number): Promise<string> {
     return new SignJWT({ kind: LOCAL_SESSION_KIND, sessionVersion })
@@ -40,6 +42,7 @@ export class LocalAuthService {
 
   async login(email: string, password: string): Promise<LoginResult> {
     const normalizedEmail = email.trim().toLowerCase();
+    const allowedStaffRoles = ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF'];
     const entries = await db
       .select({
         staffId: staff.id,
@@ -58,7 +61,7 @@ export class LocalAuthService {
       .where(and(
         eq(staff.collegeEmail, normalizedEmail),
         eq(staff.status, 'ACTIVE'),
-        inArray(roles.name, ['ADMIN', 'HOD', 'STAFF']),
+        inArray(roles.name, allowedStaffRoles),
       ));
 
     const entry = entries[0];
@@ -69,7 +72,7 @@ export class LocalAuthService {
         name: entry.name,
         collegeEmail: entry.collegeEmail,
         staffCode: entry.staffCode,
-        roles: ['ADMIN', 'HOD', 'STAFF'].filter((role) => entries.some((item) => item.role === role)) as AuthPrincipal['roles'],
+        roles: (['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF'] as const).filter((role) => entries.some((item) => item.role === role)) as AuthPrincipal['roles'],
         userType: 'STAFF',
       };
       const token = await this.createSessionToken(entry.staffId, entry.sessionVersion);
@@ -204,12 +207,20 @@ export class LocalAuthService {
       .orderBy(sql`${staffApprovalRequests.createdAt} DESC`);
   }
 
-  async approveStaffRequest(requestId: string) {
+  async approveStaffRequest(
+    requestId: string,
+    actor?: { actorId?: string; actorName?: string; actorRole?: string; actorEmail?: string; ipAddress?: string; userAgent?: string }
+  ) {
     const [req] = await db.select()
       .from(staffApprovalRequests)
       .where(eq(staffApprovalRequests.id, requestId));
     if (!req) throw new Error('Approval request not found.');
+
+    if (actor?.actorEmail && req.email.toLowerCase() === actor.actorEmail.toLowerCase()) {
+      throw new Error('You cannot approve your own access request.');
+    }
     if (req.status === 'APPROVED') return { success: true, message: 'Already approved.' };
+    if (req.status === 'REJECTED') throw new Error('Cannot approve a rejected request.');
 
     await db.transaction(async (tx) => {
       // 1. Create or update facultyAuthAccounts
@@ -253,20 +264,58 @@ export class LocalAuthService {
       }).where(eq(staffApprovalRequests.id, requestId));
     });
 
+    await this.auditService.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName || 'System',
+      actorRole: actor?.actorRole || 'HOD',
+      action: 'APPROVE_STAFF_REQUEST',
+      entityType: 'STAFF_APPROVAL_REQUEST',
+      entityId: requestId,
+      description: `Approved staff access request for ${req.name} (${req.email})`,
+      oldValues: { status: req.status },
+      newValues: { status: 'APPROVED' },
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+
     return { success: true, message: `Staff member ${req.name} has been approved.` };
   }
 
-  async rejectStaffRequest(requestId: string, reason?: string) {
+  async rejectStaffRequest(
+    requestId: string,
+    reason?: string,
+    actor?: { actorId?: string; actorName?: string; actorRole?: string; actorEmail?: string; ipAddress?: string; userAgent?: string }
+  ) {
     const [req] = await db.select()
       .from(staffApprovalRequests)
       .where(eq(staffApprovalRequests.id, requestId));
     if (!req) throw new Error('Approval request not found.');
+
+    if (actor?.actorEmail && req.email.toLowerCase() === actor.actorEmail.toLowerCase()) {
+      throw new Error('You cannot reject your own access request.');
+    }
+    if (req.status === 'REJECTED') return { success: true, message: 'Already rejected.' };
+    if (req.status === 'APPROVED') throw new Error('Cannot reject an already approved request.');
 
     await db.update(staffApprovalRequests).set({
       status: 'REJECTED',
       rejectionReason: reason || 'Declined by Head of Department',
       updatedAt: new Date(),
     }).where(eq(staffApprovalRequests.id, requestId));
+
+    await this.auditService.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName || 'System',
+      actorRole: actor?.actorRole || 'HOD',
+      action: 'REJECT_STAFF_REQUEST',
+      entityType: 'STAFF_APPROVAL_REQUEST',
+      entityId: requestId,
+      description: `Rejected staff access request for ${req.name} (${req.email}). Reason: ${reason || 'Declined by Head of Department'}`,
+      oldValues: { status: req.status },
+      newValues: { status: 'REJECTED', rejectionReason: reason },
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
 
     return { success: true, message: `Staff request for ${req.name} has been declined.` };
   }
@@ -369,19 +418,20 @@ export class LocalAuthService {
       .where(and(
         eq(staff.id, payload.sub),
         eq(staff.status, 'ACTIVE'),
-        inArray(roles.name, ['ADMIN', 'HOD', 'STAFF']),
+        inArray(roles.name, ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF']),
       ));
     const account = entries[0];
     if (!account || account.sessionVersion !== payload.sessionVersion) {
       throw new Error('Invalid session.');
     }
 
+    const allowedStaffRoles = ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF'];
     return {
       id: account.staffId,
       name: account.name,
       collegeEmail: account.collegeEmail,
       staffCode: account.staffCode,
-      roles: [...new Set(entries.map((entry) => entry.role).filter((role): role is 'ADMIN' | 'HOD' | 'STAFF' => role === 'ADMIN' || role === 'HOD' || role === 'STAFF'))],
+      roles: [...new Set(entries.map((entry) => entry.role).filter((role): role is UserRole => allowedStaffRoles.includes(role)))],
       userType: 'STAFF',
     };
   }

@@ -40,4 +40,20 @@ describe('tabular import parsing', () => {
       requiredColumns,
     )).toThrow('duplicate column headings');
   });
+
+  it('rejects formula injection cells in CSV imports', () => {
+    expect(() => parseTabularImport(
+      Buffer.from('register_number,name,college_email,class_id\r\n=cmd|calc,Test,test@sonatech.ac.in,class-1'),
+      'students.csv',
+      aliases,
+      requiredColumns,
+    )).toThrow('Potential spreadsheet formula detected');
+
+    expect(() => parseTabularImport(
+      Buffer.from('register_number,name,college_email,class_id\r\n@SUM(1+1),Test,test@sonatech.ac.in,class-1'),
+      'students.csv',
+      aliases,
+      requiredColumns,
+    )).toThrow('Potential spreadsheet formula detected');
+  });
 });

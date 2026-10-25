@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { StudentService } from "../services/student.service";
 import { AttendanceSessionService } from "../services/attendance-session.service";
-import { requireSharedModuleAccess, requireStudentAuth, requireStaffOrAdmin } from "../middlewares/auth.middleware";
+import { requireHodOrAdmin, requireSharedDashboardRead, requireStudentAuth, requireStaffOrAdmin } from "../middlewares/auth.middleware";
 import { BleTokenService } from "../services/ble-token.service";
 import { StudentBleDeviceRepository } from '../repositories/student-ble-device.repository';
 import type { students } from '../db/schema/students';
@@ -89,7 +89,7 @@ async function getImportFile(c: any): Promise<{ file: File; buffer: Buffer } | R
   return { file, buffer: Buffer.from(await file.arrayBuffer()) };
 }
 
-studentRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+studentRoutes.get('/import/template', requireSharedDashboardRead, (c) => {
   const format = c.req.query('format')?.toLowerCase();
   if (format === 'xlsx') {
     const wb = xlsx.utils.book_new();
@@ -108,7 +108,7 @@ studentRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
   return c.body('register_number,name,college_email,class_id\r\n21IT001,Sample Student,student@sonatech.ac.in,II IT-A\r\n');
 });
 
-studentRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
+studentRoutes.get('/template/xlsx', requireSharedDashboardRead, (c) => {
   const wb = xlsx.utils.book_new();
   const ws = xlsx.utils.aoa_to_sheet([
     ['register_number', 'name', 'college_email', 'class_id'],
@@ -121,13 +121,13 @@ studentRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
   return c.body(buf);
 });
 
-studentRoutes.get('/template/csv', requireSharedModuleAccess, (c) => {
+studentRoutes.get('/template/csv', requireSharedDashboardRead, (c) => {
   c.header('Content-Type', 'text/csv; charset=utf-8');
   c.header('Content-Disposition', 'attachment; filename="student-import-template.csv"');
   return c.body('register_number,name,college_email,class_id\r\n21IT001,Sample Student,student@sonatech.ac.in,II IT-A\r\n');
 });
 
-studentRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
+studentRoutes.post('/import/preview', requireHodOrAdmin, async (c) => {
   try {
     const upload = await getImportFile(c);
     if (upload instanceof Response) return upload;
@@ -138,7 +138,7 @@ studentRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
   }
 });
 
-studentRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
+studentRoutes.post('/import/confirm', requireHodOrAdmin, async (c) => {
   try {
     const upload = await getImportFile(c);
     if (upload instanceof Response) return upload;
@@ -149,7 +149,7 @@ studentRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
   }
 });
 
-studentRoutes.post('/', requireSharedModuleAccess, async (c) => {
+studentRoutes.post('/', requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json() as Record<string, unknown>;
     if (
@@ -173,7 +173,7 @@ studentRoutes.post('/', requireSharedModuleAccess, async (c) => {
   }
 });
 
-studentRoutes.put('/:id', requireSharedModuleAccess, async (c) => {
+studentRoutes.put('/:id', requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json() as Record<string, unknown>;
     const update: Partial<typeof students.$inferInsert> = {};
@@ -195,7 +195,7 @@ studentRoutes.put('/:id', requireSharedModuleAccess, async (c) => {
   }
 });
 
-studentRoutes.patch('/:id/status', requireSharedModuleAccess, async (c) => {
+studentRoutes.patch('/:id/status', requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json() as { status?: string };
     if (!['ACTIVE', 'INACTIVE', 'GRADUATED', 'SUSPENDED'].includes(body.status || '')) {

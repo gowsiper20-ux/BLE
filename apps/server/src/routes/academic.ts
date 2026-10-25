@@ -3,7 +3,7 @@ import { AcademicService } from "../services/academic.service";
 import { StaffService } from "../services/staff.service";
 import { ClassSubjectService } from "../services/class-subject.service";
 import { TimetableRepository } from "../repositories/timetable.repository";
-import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
+import { requireHodOrAdmin, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 
 export const academicRoutes = new Hono();
 const service = new AcademicService();
@@ -76,7 +76,7 @@ academicRoutes.get("/academic-years/:id", requireSharedDashboardRead, async (c) 
   }
 });
 
-academicRoutes.post("/academic-years", requireSharedModuleAccess, async (c) => {
+academicRoutes.post("/academic-years", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     if (body.startDate) body.startDate = new Date(body.startDate);
@@ -88,7 +88,7 @@ academicRoutes.post("/academic-years", requireSharedModuleAccess, async (c) => {
   }
 });
 
-academicRoutes.patch("/academic-years/:id", requireSharedModuleAccess, async (c) => {
+academicRoutes.patch("/academic-years/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     if (body.startDate) body.startDate = new Date(body.startDate);
@@ -100,7 +100,7 @@ academicRoutes.patch("/academic-years/:id", requireSharedModuleAccess, async (c)
   }
 });
 
-academicRoutes.delete("/academic-years/:id", requireSharedModuleAccess, async (c) => {
+academicRoutes.delete("/academic-years/:id", requireHodOrAdmin, async (c) => {
   try {
     await service.deleteAcademicYear(c.req.param("id")!, getActorFromContext(c));
     return c.json({ success: true });
@@ -129,7 +129,7 @@ academicRoutes.get("/batches/:id", requireSharedDashboardRead, async (c) => {
   }
 });
 
-academicRoutes.post("/batches", requireSharedModuleAccess, async (c) => {
+academicRoutes.post("/batches", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.createBatch(body, getActorFromContext(c));
@@ -139,7 +139,7 @@ academicRoutes.post("/batches", requireSharedModuleAccess, async (c) => {
   }
 });
 
-academicRoutes.patch("/batches/:id", requireSharedModuleAccess, async (c) => {
+academicRoutes.patch("/batches/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.updateBatch(c.req.param("id")!, body, getActorFromContext(c));
@@ -149,7 +149,7 @@ academicRoutes.patch("/batches/:id", requireSharedModuleAccess, async (c) => {
   }
 });
 
-academicRoutes.delete("/batches/:id", requireSharedModuleAccess, async (c) => {
+academicRoutes.delete("/batches/:id", requireHodOrAdmin, async (c) => {
   try {
     await service.deleteBatch(c.req.param("id")!, getActorFromContext(c));
     return c.json({ success: true });
@@ -178,7 +178,7 @@ academicRoutes.get("/regulations/:id", requireSharedDashboardRead, async (c) => 
   }
 });
 
-academicRoutes.post("/regulations", requireSharedModuleAccess, async (c) => {
+academicRoutes.post("/regulations", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.createRegulation(body, getActorFromContext(c));
@@ -188,7 +188,7 @@ academicRoutes.post("/regulations", requireSharedModuleAccess, async (c) => {
   }
 });
 
-academicRoutes.patch("/regulations/:id", requireSharedModuleAccess, async (c) => {
+academicRoutes.patch("/regulations/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.updateRegulation(c.req.param("id")!, body, getActorFromContext(c));
@@ -198,7 +198,7 @@ academicRoutes.patch("/regulations/:id", requireSharedModuleAccess, async (c) =>
   }
 });
 
-academicRoutes.delete("/regulations/:id", requireSharedModuleAccess, async (c) => {
+academicRoutes.delete("/regulations/:id", requireHodOrAdmin, async (c) => {
   try {
     await service.deleteRegulation(c.req.param("id")!, getActorFromContext(c));
     return c.json({ success: true });
@@ -227,7 +227,7 @@ academicRoutes.get("/classes/:id", requireSharedDashboardRead, async (c) => {
   }
 });
 
-academicRoutes.post("/classes", requireSharedModuleAccess, async (c) => {
+academicRoutes.post("/classes", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.createClass(body, getActorFromContext(c));
@@ -237,7 +237,7 @@ academicRoutes.post("/classes", requireSharedModuleAccess, async (c) => {
   }
 });
 
-academicRoutes.patch("/classes/:id", requireSharedModuleAccess, async (c) => {
+academicRoutes.patch("/classes/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const data = await service.updateClass(c.req.param("id")!, body, getActorFromContext(c));
@@ -247,7 +247,7 @@ academicRoutes.patch("/classes/:id", requireSharedModuleAccess, async (c) => {
   }
 });
 
-academicRoutes.delete("/classes/:id", requireSharedModuleAccess, async (c) => {
+academicRoutes.delete("/classes/:id", requireHodOrAdmin, async (c) => {
   try {
     await service.deleteClass(c.req.param("id")!, getActorFromContext(c));
     return c.json({ success: true });

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { ClassSubjectService } from "../services/class-subject.service";
-import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
+import { requireHodOrAdmin, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const classSubjectRoutes = new Hono();
@@ -67,7 +67,7 @@ classSubjectRoutes.get("/", requireSharedDashboardRead, async (c) => {
   }
 });
 
-classSubjectRoutes.post("/", requireSharedModuleAccess, async (c) => {
+classSubjectRoutes.post("/", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -78,7 +78,7 @@ classSubjectRoutes.post("/", requireSharedModuleAccess, async (c) => {
   }
 });
 
-classSubjectRoutes.patch("/:id/status", requireSharedModuleAccess, async (c) => {
+classSubjectRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -89,7 +89,7 @@ classSubjectRoutes.patch("/:id/status", requireSharedModuleAccess, async (c) => 
   }
 });
 
-classSubjectRoutes.delete("/:id", requireSharedModuleAccess, async (c) => {
+classSubjectRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
   try {
     const actor = getActorFromContext(c);
     await service.removeAssignment(c.req.param("id")!, actor);

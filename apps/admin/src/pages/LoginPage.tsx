@@ -9,7 +9,7 @@ interface LoginLocationState {
 }
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('hod.it@sonatech.ac.in');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -74,7 +74,7 @@ export default function LoginPage() {
                 id="hod-email"
                 type="email"
                 value={email}
-                placeholder="hod.it@sonatech.ac.in"
+                placeholder="name@sonatech.ac.in"
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
@@ -88,7 +88,7 @@ export default function LoginPage() {
                   id="hod-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  placeholder="Enter executive password"
+                  placeholder="Enter your password"
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   disabled={loading}
@@ -102,31 +102,6 @@ export default function LoginPage() {
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
-            </div>
-
-            {/* Quick Assistant */}
-            <div className="login-quick-helper">
-              <span className="quick-helper-label">Quick Sign-in:</span>
-              <button
-                type="button"
-                className="quick-helper-chip"
-                onClick={() => {
-                  setEmail('hod.it@sonatech.ac.in');
-                  setPassword('123456789012');
-                }}
-              >
-                Fill HOD (Dr. J. Akilandeswari)
-              </button>
-              <button
-                type="button"
-                className="quick-helper-chip"
-                onClick={() => {
-                  setEmail('admin@sonatech.ac.in');
-                  setPassword('123456789012');
-                }}
-              >
-                Fill Admin
-              </button>
             </div>
 
             <button type="submit" className="login-btn login-btn--hod" disabled={loading}>

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { SubjectService } from "../services/subject.service";
 import { ClassSubjectService } from "../services/class-subject.service";
-import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
+import { requireHodOrAdmin, requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 import { Buffer } from "node:buffer";
 import { TabularImportError } from "../services/tabular-import";
@@ -81,7 +81,7 @@ function handleSubjectError(c: any, error: any) {
 }
 
 // --- Bulk Import ---
-subjectRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
+subjectRoutes.get('/import/template', requireSharedDashboardRead, (c) => {
   const format = c.req.query('format')?.toLowerCase();
   if (format === 'xlsx') {
     const wb = xlsx.utils.book_new();
@@ -100,7 +100,7 @@ subjectRoutes.get('/import/template', requireSharedModuleAccess, (c) => {
   return c.body('code,name,subject_type,year_number,regulation_code,description\r\nCS3401,Algorithms and Data Structures,THEORY,2,R2023,Core Subject\r\n');
 });
 
-subjectRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
+subjectRoutes.get('/template/xlsx', requireSharedDashboardRead, (c) => {
   const wb = xlsx.utils.book_new();
   const ws = xlsx.utils.aoa_to_sheet([
     ['code', 'name', 'subject_type', 'year_number', 'regulation_code', 'description'],
@@ -113,13 +113,13 @@ subjectRoutes.get('/template/xlsx', requireSharedModuleAccess, (c) => {
   return c.body(buf);
 });
 
-subjectRoutes.get('/template/csv', requireSharedModuleAccess, (c) => {
+subjectRoutes.get('/template/csv', requireSharedDashboardRead, (c) => {
   c.header('Content-Type', 'text/csv; charset=utf-8');
   c.header('Content-Disposition', 'attachment; filename="subject-import-template.csv"');
   return c.body('code,name,subject_type,year_number,regulation_code,description\r\nCS3401,Algorithms and Data Structures,THEORY,2,R2023,Core Subject\r\n');
 });
 
-subjectRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
+subjectRoutes.post('/import/preview', requireHodOrAdmin, async (c) => {
   try {
     const upload = await getImportFile(c);
     if (upload instanceof Response) return upload;
@@ -130,7 +130,7 @@ subjectRoutes.post('/import/preview', requireSharedModuleAccess, async (c) => {
   }
 });
 
-subjectRoutes.post('/import/confirm', requireSharedModuleAccess, async (c) => {
+subjectRoutes.post('/import/confirm', requireHodOrAdmin, async (c) => {
   try {
     const upload = await getImportFile(c);
     if (upload instanceof Response) return upload;
@@ -182,7 +182,7 @@ subjectRoutes.get("/:id", requireSharedDashboardRead, async (c) => {
   }
 });
 
-subjectRoutes.post("/", requireSharedModuleAccess, async (c) => {
+subjectRoutes.post("/", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -193,7 +193,7 @@ subjectRoutes.post("/", requireSharedModuleAccess, async (c) => {
   }
 });
 
-subjectRoutes.patch("/:id", requireSharedModuleAccess, async (c) => {
+subjectRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -204,7 +204,7 @@ subjectRoutes.patch("/:id", requireSharedModuleAccess, async (c) => {
   }
 });
 
-subjectRoutes.patch("/:id/status", requireSharedModuleAccess, async (c) => {
+subjectRoutes.patch("/:id/status", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
     const actor = getActorFromContext(c);
@@ -215,7 +215,7 @@ subjectRoutes.patch("/:id/status", requireSharedModuleAccess, async (c) => {
   }
 });
 
-subjectRoutes.delete("/:id", requireSharedModuleAccess, async (c) => {
+subjectRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
   try {
     const actor = getActorFromContext(c);
     await service.deleteSubject(c.req.param("id")!, actor);

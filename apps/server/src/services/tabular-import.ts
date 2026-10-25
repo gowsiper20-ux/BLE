@@ -50,6 +50,15 @@ export function parseTabularImport(
     if (!columns.includes(column)) throw new TabularImportError(`Required column is missing: ${column}.`);
   }
 
+  for (const cells of matrix.slice(1)) {
+    for (const cell of cells) {
+      const strVal = String(cell ?? '').trim();
+      if (/^[=@]|^[-+][A-Za-z]/.test(strVal)) {
+        throw new TabularImportError('Potential spreadsheet formula detected in import cell. Formula cells are not allowed.');
+      }
+    }
+  }
+
   const rows = matrix.slice(1)
     .filter((cells) => cells.some((cell) => String(cell ?? '').trim() !== ''))
     .map((cells) => Object.fromEntries(columns.map((column, index) => [column!, String(cells[index] ?? '').trim()])));

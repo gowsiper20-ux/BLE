@@ -3,11 +3,23 @@ import { TimetableService } from "../services/timetable.service";
 import { TimetableOverrideService } from "../services/timetable-override.service";
 import { db } from "../db";
 import { count, eq } from "drizzle-orm";
-import { requireSharedModuleAccess, requireSharedDashboardRead } from "../middlewares/auth.middleware";
+import { requireHodOrAdmin, requireSharedDashboardRead } from "../middlewares/auth.middleware";
+import type { AuthPrincipal } from "@smart-attendance/shared";
 
 export const timetableRoutes = new Hono();
 const service = new TimetableService();
 const overrideService = new TimetableOverrideService();
+
+function getActorFromContext(c: any) {
+  const user = c.get("user") as AuthPrincipal | undefined;
+  return user ? {
+    actorId: user.roles.includes('FACULTY') ? undefined : user.id,
+    actorName: user.name,
+    actorRole: user.roles?.[0] || 'HOD',
+    ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || '127.0.0.1',
+    userAgent: c.req.header('user-agent'),
+  } : undefined;
+}
 
 // --- Overrides ---
 timetableRoutes.get("/overrides", requireSharedDashboardRead, async (c) => {
@@ -19,9 +31,8 @@ timetableRoutes.get("/overrides", requireSharedDashboardRead, async (c) => {
   }
 });
 
-timetableRoutes.post("/overrides", requireSharedModuleAccess, async (c) => {
+timetableRoutes.post("/overrides", requireHodOrAdmin, async (c) => {
   try {
-    const user = c.get("user") as any;
     const body = await c.req.json();
     if (body.overrideDate) {
       if (typeof body.overrideDate === 'string') {
@@ -30,13 +41,7 @@ timetableRoutes.post("/overrides", requireSharedModuleAccess, async (c) => {
         body.overrideDate = body.overrideDate.toISOString().split('T')[0];
       }
     }
-    const actor = user ? {
-      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
-      actorName: user.name,
-      actorRole: user.roles?.[0] || 'HOD',
-      ipAddress: c.req.header('x-forwarded-for') || undefined,
-      userAgent: c.req.header('user-agent') || undefined,
-    } : undefined;
+    const actor = getActorFromContext(c);
     const data = await overrideService.createOverride(body, actor);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
@@ -44,9 +49,8 @@ timetableRoutes.post("/overrides", requireSharedModuleAccess, async (c) => {
   }
 });
 
-timetableRoutes.patch("/overrides/:id", requireSharedModuleAccess, async (c) => {
+timetableRoutes.patch("/overrides/:id", requireHodOrAdmin, async (c) => {
   try {
-    const user = c.get("user") as any;
     const body = await c.req.json();
     if (body.overrideDate) {
       if (typeof body.overrideDate === 'string') {
@@ -55,13 +59,7 @@ timetableRoutes.patch("/overrides/:id", requireSharedModuleAccess, async (c) => 
         body.overrideDate = body.overrideDate.toISOString().split('T')[0];
       }
     }
-    const actor = user ? {
-      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
-      actorName: user.name,
-      actorRole: user.roles?.[0] || 'HOD',
-      ipAddress: c.req.header('x-forwarded-for') || undefined,
-      userAgent: c.req.header('user-agent') || undefined,
-    } : undefined;
+    const actor = getActorFromContext(c);
     const data = await overrideService.updateOverride(c.req.param("id")!, body, actor);
     return c.json({ success: true, data });
   } catch (error: any) {
@@ -69,16 +67,9 @@ timetableRoutes.patch("/overrides/:id", requireSharedModuleAccess, async (c) => 
   }
 });
 
-timetableRoutes.delete("/overrides/:id", requireSharedModuleAccess, async (c) => {
+timetableRoutes.delete("/overrides/:id", requireHodOrAdmin, async (c) => {
   try {
-    const user = c.get("user") as any;
-    const actor = user ? {
-      actorId: user.roles.includes('FACULTY') ? undefined : user.id,
-      actorName: user.name,
-      actorRole: user.roles?.[0] || 'HOD',
-      ipAddress: c.req.header('x-forwarded-for') || undefined,
-      userAgent: c.req.header('user-agent') || undefined,
-    } : undefined;
+    const actor = getActorFromContext(c);
     await overrideService.deleteOverride(c.req.param("id")!, actor);
     return c.json({ success: true });
   } catch (error: any) {
@@ -117,29 +108,32 @@ timetableRoutes.get("/", requireSharedDashboardRead, async (c) => {
   }
 });
 
-timetableRoutes.post("/", requireSharedModuleAccess, async (c) => {
+timetableRoutes.post("/", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
-    const data = await service.createTimetableEntry(body);
+    const actor = getActorFromContext(c);
+    const data = await service.createTimetableEntry(body, actor);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
     return c.json({ success: false, error: { code: error.message, message: error.message } }, 409);
   }
 });
 
-timetableRoutes.patch("/:id", requireSharedModuleAccess, async (c) => {
+timetableRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
   try {
     const body = await c.req.json();
-    const data = await service.updateTimetableEntry(c.req.param("id")!, body);
+    const actor = getActorFromContext(c);
+    const data = await service.updateTimetableEntry(c.req.param("id")!, body, actor);
     return c.json({ success: true, data });
   } catch (error: any) {
     return c.json({ success: false, error: { code: error.message, message: error.message } }, 409);
   }
 });
 
-timetableRoutes.delete("/:id", requireSharedModuleAccess, async (c) => {
+timetableRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
   try {
-    await service.deleteTimetableEntry(c.req.param("id")!);
+    const actor = getActorFromContext(c);
+    await service.deleteTimetableEntry(c.req.param("id")!, actor);
     return c.json({ success: true });
   } catch (error: any) {
     return c.json({ success: false, error: { message: error.message } }, 400);

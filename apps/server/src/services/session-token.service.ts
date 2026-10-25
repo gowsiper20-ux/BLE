@@ -12,7 +12,13 @@ export class SessionTokenService {
   getJwtSecret(): Uint8Array {
     const secret = process.env.JWT_SECRET;
     if (!secret || secret.trim() === '') {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('JWT_SECRET must be configured in production environment.');
+      }
       return new TextEncoder().encode('development_only_secret_must_be_changed_in_prod_32chars!');
+    }
+    if (process.env.NODE_ENV === 'production' && secret.length < 32) {
+      throw new Error('JWT_SECRET must be at least 32 characters long in production.');
     }
     return new TextEncoder().encode(secret);
   }
