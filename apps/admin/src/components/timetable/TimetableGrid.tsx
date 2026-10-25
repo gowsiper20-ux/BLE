@@ -28,8 +28,7 @@ const DAYS = [
 
 const DAY_INDEX_MAP = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
-// Distinct, high-contrast academic palettes for subjects
-interface SubjectTheme {
+export interface SubjectTheme {
   bg: string;
   border: string;
   accent: string;
@@ -39,17 +38,17 @@ interface SubjectTheme {
 }
 
 const SUBJECT_THEMES: SubjectTheme[] = [
-  { bg: '#eff6ff', border: '#bfdbfe', accent: '#2563eb', text: '#1e3a8a', badgeBg: '#dbeafe', badgeText: '#1e40af' }, // Blue
+  { bg: '#eff6ff', border: '#bfdbfe', accent: '#005696', text: '#003865', badgeBg: '#dbeafe', badgeText: '#005696' }, // Sona Royal Blue
   { bg: '#f0fdf4', border: '#bbf7d0', accent: '#16a34a', text: '#14532d', badgeBg: '#dcfce7', badgeText: '#166534' }, // Emerald
-  { bg: '#f5f3ff', border: '#ddd6fe', accent: '#7c3aed', text: '#4c1d95', badgeBg: '#ede9fe', badgeText: '#5b21b6' }, // Purple
+  { bg: '#faf5ff', border: '#e9d5ff', accent: '#7c3aed', text: '#581c87', badgeBg: '#f3e8ff', badgeText: '#6b21a8' }, // Purple
   { bg: '#fffbeb', border: '#fde68a', accent: '#d97706', text: '#78350f', badgeBg: '#fef3c7', badgeText: '#92400e' }, // Amber
   { bg: '#ecfeff', border: '#a5f3fc', accent: '#0891b2', text: '#164e63', badgeBg: '#cffafe', badgeText: '#155e75' }, // Teal
   { bg: '#fff1f2', border: '#fecdd3', accent: '#e11d48', text: '#881337', badgeBg: '#ffe4e6', badgeText: '#9f1239' }, // Rose
-  { bg: '#f8fafc', border: '#cbd5e1', accent: '#475569', text: '#0f172a', badgeBg: '#e2e8f0', badgeText: '#334155' }, // Slate
+  { bg: '#f8fafc', border: '#cbd5e1', accent: '#334155', text: '#0f172a', badgeBg: '#e2e8f0', badgeText: '#334155' }, // Slate
   { bg: '#fdf4ff', border: '#f5d0fe', accent: '#c026d3', text: '#701a75', badgeBg: '#fae8ff', badgeText: '#86198f' }, // Fuchsia
 ];
 
-function getSubjectTheme(code?: string, name?: string): SubjectTheme {
+export function getSubjectTheme(code?: string, name?: string): SubjectTheme {
   const key = (code || name || 'GENERAL').toUpperCase();
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
@@ -59,33 +58,20 @@ function getSubjectTheme(code?: string, name?: string): SubjectTheme {
   return SUBJECT_THEMES[index];
 }
 
-function isLabSubject(code?: string, name?: string): boolean {
+export function isLabSubject(code?: string, name?: string): boolean {
   const text = `${code || ''} ${name || ''}`.toLowerCase();
   return text.includes('lab') || text.includes('laboratory') || text.includes('practical');
 }
 
-function getBreakBetween(prevPeriod: Period, nextPeriod: Period): { label: string; time: string; icon: string } | null {
-  if (!prevPeriod?.endTime || !nextPeriod?.startTime) return null;
-  const [prevH, prevM] = prevPeriod.endTime.split(':').map(Number);
-  const [nextH, nextM] = nextPeriod.startTime.split(':').map(Number);
-  const prevMin = prevH * 60 + prevM;
-  const nextMin = nextH * 60 + nextM;
-  const gap = nextMin - prevMin;
-
-  if (gap >= 35) {
-    return {
-      label: 'Lunch Break',
-      time: `${prevPeriod.endTime.substring(0, 5)} - ${nextPeriod.startTime.substring(0, 5)}`,
-      icon: '🍽️'
-    };
-  } else if (gap >= 10) {
-    return {
-      label: 'Tea Break',
-      time: `${prevPeriod.endTime.substring(0, 5)} - ${nextPeriod.startTime.substring(0, 5)}`,
-      icon: '☕'
-    };
-  }
-  return null;
+interface HoveredSlot {
+  entry: TimetableEntry;
+  dayLabel: string;
+  period: Period;
+  theme: SubjectTheme;
+  isLab: boolean;
+  top: number;
+  left: number;
+  placement: 'top' | 'bottom';
 }
 
 export default function TimetableGrid({
@@ -103,35 +89,34 @@ export default function TimetableGrid({
   const [selectedCell, setSelectedCell] = useState<{ day: string; periodId: string } | null>(null);
   const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null);
   const [viewOrientation, setViewOrientation] = useState<'columns' | 'rows'>('columns');
-  const [density, setDensity] = useState<'compact' | 'comfortable'>('compact');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showBreaks, setShowBreaks] = useState(true);
+  const [hovered, setHovered] = useState<HoveredSlot | null>(null);
 
   const todayKey = useMemo(() => DAY_INDEX_MAP[new Date().getDay()], []);
 
-  // Sorted periods by periodNumber or time
+  // Filter out any non-academic test periods and sort by periodNumber / startTime
   const sortedPeriods = useMemo(() => {
-    return [...periods].sort((a, b) => {
-      if (a.periodNumber !== undefined && b.periodNumber !== undefined) {
-        return a.periodNumber - b.periodNumber;
-      }
-      return a.startTime.localeCompare(b.startTime);
-    });
+    return [...periods]
+      .filter(p => !p.name.includes('ATT-') && p.startTime !== '00:00:00' && p.endTime !== '23:59:00')
+      .sort((a, b) => {
+        if (a.periodNumber !== undefined && b.periodNumber !== undefined) {
+          return a.periodNumber - b.periodNumber;
+        }
+        return a.startTime.localeCompare(b.startTime);
+      });
   }, [periods]);
 
-  // Statistics for summary badges
+  // Statistics
   const stats = useMemo(() => {
     const scheduled = timetable.length;
     const totalSlots = DAYS.length * sortedPeriods.length;
     const labCount = timetable.filter(e => isLabSubject(e.subjectCode, e.subjectName)).length;
-    const theoryCount = scheduled - labCount;
     const uniqueSubjects = new Set(timetable.map(e => e.subjectId || e.subjectCode)).size;
 
     return {
       scheduled,
       totalSlots,
       labCount,
-      theoryCount,
       uniqueSubjects,
     };
   }, [timetable, sortedPeriods]);
@@ -140,6 +125,7 @@ export default function TimetableGrid({
 
   const handleCellClick = (day: string, periodId: string) => {
     if (readOnly) return;
+    setHovered(null);
     const entry = timetable.find(e => e.dayOfWeek === day && e.periodId === periodId);
     if (entry) {
       setEditingEntry(entry);
@@ -158,6 +144,7 @@ export default function TimetableGrid({
   };
 
   const handlePrint = () => {
+    setHovered(null);
     window.print();
   };
 
@@ -171,8 +158,36 @@ export default function TimetableGrid({
     );
   };
 
+  const handleSlotMouseEnter = (
+    entry: TimetableEntry,
+    day: { label: string },
+    period: Period,
+    e: React.MouseEvent<HTMLDivElement>
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const placement: 'top' | 'bottom' = spaceBelow < 230 ? 'top' : 'bottom';
+    const top = placement === 'top' ? rect.top : rect.bottom;
+    const left = Math.min(Math.max(rect.left + rect.width / 2, 170), window.innerWidth - 170);
+
+    setHovered({
+      entry,
+      dayLabel: day.label,
+      period,
+      theme: getSubjectTheme(entry.subjectCode, entry.subjectName),
+      isLab: isLabSubject(entry.subjectCode, entry.subjectName),
+      top,
+      left,
+      placement,
+    });
+  };
+
+  const handleSlotMouseLeave = () => {
+    setHovered(null);
+  };
+
   return (
-    <div className={`timetable-container timetable-container--${density}`}>
+    <div className="timetable-container">
       {/* Print-Only Header */}
       <div className="timetable-print-header">
         <h1 className="timetable-print-college">SONA COLLEGE OF TECHNOLOGY (Autonomous)</h1>
@@ -234,59 +249,29 @@ export default function TimetableGrid({
             <button
               type="button"
               className={`timetable-btn-toggle ${viewOrientation === 'columns' ? 'timetable-btn-toggle--active' : ''}`}
-              onClick={() => setViewOrientation('columns')}
-              title="Days as Columns (Standard College View)"
+              onClick={() => { setViewOrientation('columns'); setHovered(null); }}
+              title="Days as Columns"
             >
               Days Top
             </button>
             <button
               type="button"
               className={`timetable-btn-toggle ${viewOrientation === 'rows' ? 'timetable-btn-toggle--active' : ''}`}
-              onClick={() => setViewOrientation('rows')}
-              title="Days as Rows (Horizontal Schedule View)"
+              onClick={() => { setViewOrientation('rows'); setHovered(null); }}
+              title="Days as Rows"
             >
               Days Left
             </button>
           </div>
-
-          {/* Density Toggle */}
-          <div className="timetable-btn-group" role="group" aria-label="Density selector">
-            <button
-              type="button"
-              className={`timetable-btn-toggle ${density === 'compact' ? 'timetable-btn-toggle--active' : ''}`}
-              onClick={() => setDensity('compact')}
-              title="Fit to Page view"
-            >
-              Fit Page
-            </button>
-            <button
-              type="button"
-              className={`timetable-btn-toggle ${density === 'comfortable' ? 'timetable-btn-toggle--active' : ''}`}
-              onClick={() => setDensity('comfortable')}
-              title="Comfortable card view"
-            >
-              Comfortable
-            </button>
-          </div>
-
-          {/* Break Dividers Toggle */}
-          <button
-            type="button"
-            className={`timetable-icon-btn ${showBreaks ? 'timetable-icon-btn--active' : ''}`}
-            onClick={() => setShowBreaks(b => !b)}
-            title={showBreaks ? "Hide Break Bars" : "Show Break Bars"}
-          >
-            ☕
-          </button>
 
           {/* Print Button */}
           <button
             type="button"
             className="timetable-icon-btn timetable-print-btn"
             onClick={handlePrint}
-            title="Print Single-Page Timetable (A4 Landscape)"
+            title="Print Single-Page Timetable"
           >
-            <Icon name="download" size={15} />
+            <Icon name="download" size={14} />
             <span>Print</span>
           </button>
         </div>
@@ -298,7 +283,7 @@ export default function TimetableGrid({
           /* ========================================================
              ORIENTATION A: DAYS AS COLUMNS (MON, TUE, WED, THU, FRI, SAT)
              ======================================================== */
-          <table className="timetable-table timetable-table--fixed">
+          <table className="timetable-table">
             <thead>
               <tr>
                 <th className="timetable-th timetable-th--period">Period</th>
@@ -320,110 +305,84 @@ export default function TimetableGrid({
               </tr>
             </thead>
             <tbody>
-              {sortedPeriods.map((period, pIdx) => {
-                const prevPeriod = pIdx > 0 ? sortedPeriods[pIdx - 1] : null;
-                const breakInfo = prevPeriod ? getBreakBetween(prevPeriod, period) : null;
+              {sortedPeriods.map(period => (
+                <tr key={period.id} className="timetable-tr">
+                  {/* Period Header Column */}
+                  <td className="timetable-td timetable-td--period">
+                    <div className="timetable-period-pill">
+                      <span className="timetable-period-name">{period.name}</span>
+                      <span className="timetable-period-time">
+                        {period.startTime.substring(0, 5)} - {period.endTime.substring(0, 5)}
+                      </span>
+                    </div>
+                  </td>
 
-                return (
-                  <tr key={period.id} className="timetable-tr">
-                    {/* Optional Break Row Before This Period */}
-                    {showBreaks && breakInfo && (
-                      <tr key={`break-${period.id}`} className="timetable-break-tr">
-                        <td colSpan={7} className="timetable-break-td">
-                          <div className="timetable-break-banner">
-                            <span className="timetable-break-icon">{breakInfo.icon}</span>
-                            <span className="timetable-break-title">{breakInfo.label}</span>
-                            <span className="timetable-break-times">({breakInfo.time})</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                  {/* Day Slots */}
+                  {DAYS.map(day => {
+                    const entry = timetable.find(e => e.dayOfWeek === day.key && e.periodId === period.id);
+                    const isToday = day.key === todayKey;
+                    const isMatch = checkMatch(entry);
+                    const isDimmed = Boolean(searchQuery.trim() && !isMatch);
+                    const isLab = entry ? isLabSubject(entry.subjectCode, entry.subjectName) : false;
+                    const theme = entry ? getSubjectTheme(entry.subjectCode, entry.subjectName) : null;
 
-                    {/* Period Row */}
-                    <td className="timetable-td timetable-td--period">
-                      <div className="timetable-period-pill">
-                        <span className="timetable-period-name">{period.name}</span>
-                        <span className="timetable-period-time">
-                          {period.startTime.substring(0, 5)} - {period.endTime.substring(0, 5)}
-                        </span>
-                      </div>
-                    </td>
-
-                    {DAYS.map(day => {
-                      const entry = timetable.find(e => e.dayOfWeek === day.key && e.periodId === period.id);
-                      const isToday = day.key === todayKey;
-                      const isMatch = checkMatch(entry);
-                      const isDimmed = Boolean(searchQuery.trim() && !isMatch);
-                      const isLab = entry ? isLabSubject(entry.subjectCode, entry.subjectName) : false;
-                      const theme = entry ? getSubjectTheme(entry.subjectCode, entry.subjectName) : null;
-
-                      return (
-                        <td
-                          key={`${period.id}-${day.key}`}
-                          className={`timetable-td timetable-td--slot ${isToday ? 'timetable-td--today' : ''} ${isDimmed ? 'timetable-td--dimmed' : ''}`}
+                    return (
+                      <td
+                        key={`${period.id}-${day.key}`}
+                        className={`timetable-td timetable-td--slot ${isToday ? 'timetable-td--today' : ''} ${isDimmed ? 'timetable-td--dimmed' : ''}`}
+                      >
+                        <div
+                          className={`timetable-cell ${entry ? 'timetable-cell--filled' : 'timetable-cell--empty'} ${readOnly ? 'timetable-cell--readonly' : ''}`}
+                          onClick={() => handleCellClick(day.key, period.id)}
+                          onMouseEnter={(e) => {
+                            if (entry) handleSlotMouseEnter(entry, day, period, e);
+                          }}
+                          onMouseLeave={handleSlotMouseLeave}
                         >
-                          <div
-                            className={`timetable-cell ${entry ? 'timetable-cell--filled' : 'timetable-cell--empty'} ${readOnly ? 'timetable-cell--readonly' : ''}`}
-                            onClick={() => handleCellClick(day.key, period.id)}
-                            title={
-                              entry
-                                ? `${entry.subjectCode || ''} - ${entry.subjectName || ''}\nFaculty: ${entry.staffName || 'Unassigned'}\nTiming: ${period.startTime.substring(0, 5)} - ${period.endTime.substring(0, 5)} (${period.name})\nDay: ${day.label}${readOnly ? '' : '\nClick to edit slot'}`
-                                : `${day.label} · ${period.name} (${period.startTime.substring(0, 5)} - ${period.endTime.substring(0, 5)})\nEmpty Slot${readOnly ? '' : ' — Click to assign class'}`
-                            }
-                          >
-                            {entry && theme ? (
-                              <div
-                                className="timetable-card"
-                                style={{
-                                  backgroundColor: theme.bg,
-                                  borderColor: theme.border,
-                                  borderLeftColor: theme.accent,
-                                }}
-                              >
-                                <div className="timetable-card__header">
-                                  <span
-                                    className="timetable-badge-code"
-                                    style={{
-                                      backgroundColor: theme.badgeBg,
-                                      color: theme.badgeText,
-                                    }}
-                                  >
-                                    {entry.subjectCode || 'SUB'}
-                                  </span>
-                                  {isLab && <span className="timetable-badge-lab">LAB</span>}
-                                  {entry.status === 'INACTIVE' && (
-                                    <span className="timetable-badge-inactive">INACTIVE</span>
-                                  )}
-                                </div>
-
-                                <div className="timetable-card__title" style={{ color: theme.text }}>
-                                  {entry.subjectName}
-                                </div>
-
-                                <div className="timetable-card__footer">
-                                  <span className="timetable-faculty-dot" style={{ backgroundColor: theme.accent }} />
-                                  <span className="timetable-card__faculty">{entry.staffName}</span>
-                                </div>
+                          {entry && theme ? (
+                            <div
+                              className="timetable-subject-card"
+                              style={{
+                                backgroundColor: theme.bg,
+                                borderColor: theme.border,
+                                borderLeftColor: theme.accent,
+                              }}
+                            >
+                              <div className="timetable-subject-card__top">
+                                <span
+                                  className="timetable-subject-code"
+                                  style={{
+                                    backgroundColor: theme.badgeBg,
+                                    color: theme.badgeText,
+                                  }}
+                                >
+                                  {entry.subjectCode || 'SUB'}
+                                </span>
+                                {isLab && <span className="timetable-lab-pill">LAB</span>}
                               </div>
-                            ) : (
-                              <div className="timetable-empty-slot">
-                                {!readOnly && <span className="timetable-empty-plus">+</span>}
+
+                              <div className="timetable-subject-name" style={{ color: theme.text }}>
+                                {entry.subjectName}
                               </div>
-                            )}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+                            </div>
+                          ) : (
+                            <div className="timetable-empty-slot">
+                              {!readOnly && <span className="timetable-empty-plus">+</span>}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         ) : (
           /* ========================================================
              ORIENTATION B: DAYS AS ROWS (MON TO SAT ON LEFT, PERIODS ON TOP)
              ======================================================== */
-          <table className="timetable-table timetable-table--fixed">
+          <table className="timetable-table">
             <thead>
               <tr>
                 <th className="timetable-th timetable-th--day-col">Day</th>
@@ -467,24 +426,23 @@ export default function TimetableGrid({
                           <div
                             className={`timetable-cell ${entry ? 'timetable-cell--filled' : 'timetable-cell--empty'} ${readOnly ? 'timetable-cell--readonly' : ''}`}
                             onClick={() => handleCellClick(day.key, period.id)}
-                            title={
-                              entry
-                                ? `${entry.subjectCode || ''} - ${entry.subjectName || ''}\nFaculty: ${entry.staffName || 'Unassigned'}\nTiming: ${period.startTime.substring(0, 5)} - ${period.endTime.substring(0, 5)} (${period.name})\nDay: ${day.label}${readOnly ? '' : '\nClick to edit slot'}`
-                                : `${day.label} · ${period.name} (${period.startTime.substring(0, 5)} - ${period.endTime.substring(0, 5)})\nEmpty Slot${readOnly ? '' : ' — Click to assign class'}`
-                            }
+                            onMouseEnter={(e) => {
+                              if (entry) handleSlotMouseEnter(entry, day, period, e);
+                            }}
+                            onMouseLeave={handleSlotMouseLeave}
                           >
                             {entry && theme ? (
                               <div
-                                className="timetable-card"
+                                className="timetable-subject-card"
                                 style={{
                                   backgroundColor: theme.bg,
                                   borderColor: theme.border,
                                   borderLeftColor: theme.accent,
                                 }}
                               >
-                                <div className="timetable-card__header">
+                                <div className="timetable-subject-card__top">
                                   <span
-                                    className="timetable-badge-code"
+                                    className="timetable-subject-code"
                                     style={{
                                       backgroundColor: theme.badgeBg,
                                       color: theme.badgeText,
@@ -492,19 +450,11 @@ export default function TimetableGrid({
                                   >
                                     {entry.subjectCode || 'SUB'}
                                   </span>
-                                  {isLab && <span className="timetable-badge-lab">LAB</span>}
-                                  {entry.status === 'INACTIVE' && (
-                                    <span className="timetable-badge-inactive">INACTIVE</span>
-                                  )}
+                                  {isLab && <span className="timetable-lab-pill">LAB</span>}
                                 </div>
 
-                                <div className="timetable-card__title" style={{ color: theme.text }}>
+                                <div className="timetable-subject-name" style={{ color: theme.text }}>
                                   {entry.subjectName}
-                                </div>
-
-                                <div className="timetable-card__footer">
-                                  <span className="timetable-faculty-dot" style={{ backgroundColor: theme.accent }} />
-                                  <span className="timetable-card__faculty">{entry.staffName}</span>
                                 </div>
                               </div>
                             ) : (
@@ -523,6 +473,84 @@ export default function TimetableGrid({
           </table>
         )}
       </div>
+
+      {/* ========================================================
+          PLEASANT HOVER DETAIL POP-UP (Subject details on cursor hover)
+          ======================================================== */}
+      {hovered && (
+        <div
+          className={`timetable-popup timetable-popup--${hovered.placement}`}
+          style={{
+            top: `${hovered.top}px`,
+            left: `${hovered.left}px`,
+          }}
+        >
+          {/* Card Accent Top Banner */}
+          <div
+            className="timetable-popup__header"
+            style={{ borderLeftColor: hovered.theme.accent }}
+          >
+            <div className="timetable-popup__badges">
+              <span
+                className="timetable-popup__code"
+                style={{
+                  backgroundColor: hovered.theme.badgeBg,
+                  color: hovered.theme.badgeText,
+                }}
+              >
+                {hovered.entry.subjectCode || 'SUBJECT'}
+              </span>
+              {hovered.isLab ? (
+                <span className="timetable-popup__lab-badge">Laboratory Practical</span>
+              ) : (
+                <span className="timetable-popup__type-badge">Theory</span>
+              )}
+            </div>
+            <h3 className="timetable-popup__title">{hovered.entry.subjectName}</h3>
+          </div>
+
+          <div className="timetable-popup__body">
+            {/* Faculty In-Charge */}
+            <div className="timetable-popup__row">
+              <span className="timetable-popup__icon">👤</span>
+              <div className="timetable-popup__field">
+                <span className="timetable-popup__label">Faculty In-Charge</span>
+                <span className="timetable-popup__value timetable-popup__value--faculty">
+                  {hovered.entry.staffName || 'Faculty Not Assigned'}
+                </span>
+              </div>
+            </div>
+
+            {/* Timing & Period */}
+            <div className="timetable-popup__row">
+              <span className="timetable-popup__icon">⏰</span>
+              <div className="timetable-popup__field">
+                <span className="timetable-popup__label">Schedule & Period</span>
+                <span className="timetable-popup__value">
+                  {hovered.dayLabel} · {hovered.period.name} ({hovered.period.startTime.substring(0, 5)} - {hovered.period.endTime.substring(0, 5)})
+                </span>
+              </div>
+            </div>
+
+            {/* Class Section */}
+            {classNameText && (
+              <div className="timetable-popup__row">
+                <span className="timetable-popup__icon">🏫</span>
+                <div className="timetable-popup__field">
+                  <span className="timetable-popup__label">Department & Class</span>
+                  <span className="timetable-popup__value">IT · {classNameText}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!readOnly && (
+            <div className="timetable-popup__footer">
+              <span>💡 Click slot to modify schedule or faculty</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Entry Modal for Create / Edit */}
       {modalOpen && (selectedCell || editingEntry) && (

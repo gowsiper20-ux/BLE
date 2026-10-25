@@ -1,10 +1,19 @@
 import { db } from "../db";
 import { periods } from "../db/schema/timetable";
-import { eq, asc } from "drizzle-orm";
+import { eq, and, notLike, asc } from "drizzle-orm";
 
 export class PeriodRepository {
   async findAll() {
-    return await db.select().from(periods).orderBy(asc(periods.periodNumber));
+    return await db
+      .select()
+      .from(periods)
+      .where(
+        and(
+          eq(periods.status, 'ACTIVE'),
+          notLike(periods.name, '%ATT-%')
+        )
+      )
+      .orderBy(asc(periods.periodNumber));
   }
 
   async findById(id: string) {
