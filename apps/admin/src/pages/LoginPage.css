@@ -1,3 +1,7 @@
+/* ==========================================================================
+   LOGIN PAGE — Original Clean Card + Sign Up Modal
+   ========================================================================== */
+
 .login-layout {
   position: relative;
   min-height: 100vh;
@@ -81,98 +85,19 @@
   font-weight: 500;
 }
 
-/* Portal Tabs Switcher */
-.login-card__portal-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  background: #f1f5f9;
-  padding: 5px;
-  border-radius: 10px;
-  margin-bottom: 22px;
-}
-
-.portal-tab {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
-}
-
-.portal-tab:hover {
-  background: rgba(255, 255, 255, 0.6);
-}
-
-.portal-tab--active {
-  background: #ffffff !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.portal-tab--active.portal-tab--hod {
-  border-color: rgba(245, 158, 11, 0.4);
-}
-
-.portal-tab--active.portal-tab--faculty {
-  border-color: rgba(0, 86, 150, 0.3);
-}
-
-.portal-tab__icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+/* Portal Badge */
+.login-portal-badge {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #e2e8f0;
-  color: #475569;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
-
-.portal-tab--active.portal-tab--hod .portal-tab__icon {
-  background: #fef3c7;
-  color: #b45309;
-}
-
-.portal-tab--active.portal-tab--faculty .portal-tab__icon {
-  background: #e0f2fe;
-  color: #0369a1;
-}
-
-.portal-tab__text {
-  display: flex;
-  flex-direction: column;
-}
-
-.portal-tab__label {
-  font-size: 13px;
-  font-weight: 700;
-  color: #1e293b;
-  line-height: 1.2;
-}
-
-.portal-tab__hint {
-  font-size: 10.5px;
-  color: #64748b;
-  line-height: 1.2;
-}
-
-/* Badges */
-.login-portal-badge {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .login-portal-badge--hod {
@@ -181,48 +106,22 @@
   border: 1px solid #fde68a;
 }
 
-.login-portal-badge--faculty {
-  background: #f0f9ff;
-  color: #0369a1;
-  border: 1px solid #bae6fd;
-}
-
-.login-portal-badge--register {
-  background: #f5f3ff;
-  color: #6d28d9;
-  border: 1px solid #ddd6fe;
-}
-
-/* Faculty Sub-tabs */
-.faculty-subtabs {
-  display: flex;
-  border-bottom: 1px solid #e2e8f0;
-  margin-bottom: 18px;
-}
-
-.subtab-btn {
-  flex: 1;
-  padding: 9px 12px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+/* Alerts */
+.login-alert {
+  padding: 11px 14px;
+  border-radius: 8px;
   font-size: 13px;
-  font-weight: 600;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.15s;
+  margin-bottom: 16px;
+  line-height: 1.4;
 }
 
-.subtab-btn:hover {
-  color: #0f172a;
+.login-alert--error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
 }
 
-.subtab-btn--active {
-  color: #005696;
-  border-bottom-color: #005696;
-}
-
-/* Form Styles */
+/* Form */
 .login-form {
   display: flex;
   flex-direction: column;
@@ -242,7 +141,8 @@
   align-items: start;
 }
 
-.form-row .form-group input {
+.form-row .form-group input,
+.form-row .form-group select {
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
@@ -254,20 +154,43 @@
   color: #334155;
 }
 
-.form-group input {
+.form-group input,
+.form-select {
   padding: 10px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13.5px;
   color: #0f172a;
   background: #ffffff;
   transition: all 0.15s;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.form-group input:focus {
+.form-group input:focus,
+.form-select:focus {
   outline: none;
   border-color: #005696;
   box-shadow: 0 0 0 3px rgba(0, 86, 150, 0.12);
+}
+
+.form-group input:disabled,
+.form-select:disabled {
+  background: #f8fafc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.form-optional {
+  font-weight: 400;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.form-hint-label {
+  font-weight: 500;
+  color: #64748b;
+  font-size: 11px;
 }
 
 .input-with-icon {
@@ -308,6 +231,8 @@
   cursor: pointer;
   transition: all 0.2s ease;
   margin-top: 6px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .login-btn:disabled {
@@ -325,111 +250,396 @@
   transform: translateY(-1px);
 }
 
-.login-btn--faculty {
-  background: #0284c7;
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
-}
-
-.login-btn--faculty:hover:not(:disabled) {
-  background: #0369a1;
-  transform: translateY(-1px);
-}
-
 .login-btn--register {
-  background: #7c3aed;
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
   box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+  margin-top: 0;
 }
 
 .login-btn--register:hover:not(:disabled) {
-  background: #6d28d9;
+  background: linear-gradient(135deg, #6d28d9, #4c1d95);
   transform: translateY(-1px);
 }
 
-/* Alerts */
-.login-alert {
-  padding: 12px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  margin-bottom: 16px;
-  line-height: 1.4;
-}
-
-.login-alert--error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #b91c1c;
-}
-
-.login-alert--pending {
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  color: #92400e;
+/* Quick Demo Helper */
+.login-quick-helper {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+
+.quick-helper-label {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 11.5px;
+}
+
+.quick-helper-chip {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid;
+}
+
+.quick-helper-chip--hod {
+  color: #b45309;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.quick-helper-chip--hod:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.quick-helper-chip--admin {
+  color: #0369a1;
+  border-color: #bae6fd;
+  background: #f0f9ff;
+}
+
+.quick-helper-chip--admin:hover {
+  background: #e0f2fe;
+  border-color: #0284c7;
+}
+
+.quick-helper-chip--faculty {
+  color: #6d28d9;
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+}
+
+.quick-helper-chip--faculty:hover {
+  background: #ede9fe;
+  border-color: #7c3aed;
+}
+
+/* Sign Up Row below form */
+.login-signup-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.login-signup-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #005696;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.login-signup-link:hover {
+  color: #003366;
+}
+
+/* Footer */
+.login-card__footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 11.5px;
+  color: #94a3b8;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 14px;
+}
+
+/* ==========================================================================
+   SIGN UP MODAL
+   ========================================================================== */
+
+.signup-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 14, 26, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: overlayIn 0.2s ease;
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.signup-modal {
+  background: #ffffff;
+  border-radius: 18px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  animation: modalSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes modalSlideIn {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Scrollbar */
+.signup-modal::-webkit-scrollbar { width: 6px; }
+.signup-modal::-webkit-scrollbar-track { background: transparent; }
+.signup-modal::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 3px; }
+
+/* Modal Header */
+.signup-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 28px 18px 28px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.signup-modal__header-brand {
+  display: flex;
+  align-items: center;
   gap: 12px;
 }
 
-.login-alert__icon {
-  color: #d97706;
-  flex-shrink: 0;
-  margin-top: 2px;
+.signup-modal__crest {
+  font-size: 13px;
+  padding: 5px 10px;
 }
 
-.login-alert__content p {
-  margin: 4px 0;
-  font-size: 12.5px;
+.signup-modal__title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
 }
 
-.login-alert__subnote {
+.signup-modal__subtitle {
   font-size: 11.5px;
-  color: #b45309;
+  color: #64748b;
+  margin: 0;
 }
 
-/* Success Card */
-.registration-success-card {
+.signup-modal__close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.signup-modal__close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* About Banner */
+.signup-modal__about-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 18px 28px 0 28px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f0f7fc, #e8f4fd);
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  border-left: 4px solid #005696;
+}
+
+.about-banner__icon {
+  color: #005696;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.about-banner__content strong {
+  display: block;
+  font-size: 12.5px;
+  color: #0f172a;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.about-banner__content p {
+  font-size: 12px;
+  color: #334155;
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* Modal Form Wrapper */
+.signup-modal__form {
+  padding: 18px 28px 0 28px;
+}
+
+/* Note box */
+.signup-modal__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 13px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #92400e;
+  line-height: 1.45;
+  margin-top: -4px;
+}
+
+.signup-modal__note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #d97706;
+}
+
+/* Password Strength Meter */
+.pw-strength-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.pw-strength-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  transition: background-color 0.25s ease;
+}
+
+.pw-strength-label {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 44px;
+}
+
+/* Password match tag */
+.pw-match-tag {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.pw-match-tag--ok { color: #10b981; }
+.pw-match-tag--err { color: #ef4444; }
+
+/* Success state */
+.signup-success-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 16px 8px;
+  padding: 28px 28px 10px 28px;
 }
 
-.reg-success-icon {
-  width: 60px;
-  height: 60px;
+.signup-success__icon {
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
   background: #dcfce7;
   color: #16a34a;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 16px rgba(22, 163, 74, 0.2);
 }
 
-.registration-success-card h3 {
-  margin: 0 0 8px 0;
-  font-size: 17px;
-  font-weight: 700;
+.signup-success-state h3 {
+  font-size: 20px;
+  font-weight: 800;
   color: #0f172a;
+  margin: 0 0 8px 0;
 }
 
-.registration-success-card p {
-  margin: 0 0 10px 0;
+.signup-success-state p {
   font-size: 13px;
   color: #475569;
+  line-height: 1.55;
+  margin: 0 0 16px 0;
+  max-width: 380px;
 }
 
-.reg-success-desc {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 20px !important;
+.signup-success__detail {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 18px;
+  text-align: left;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  color: #475569;
+  margin-bottom: 4px;
+  box-sizing: border-box;
 }
 
-/* Footer */
-.login-card__footer {
-  margin-top: 22px;
-  text-align: center;
-  font-size: 11.5px;
-  color: #94a3b8;
-  border-top: 1px solid #f1f5f9;
-  padding-top: 14px;
+/* Modal bottom padding spacer */
+.signup-modal__form + * {
+  margin-bottom: 28px;
+}
+
+/* Responsive */
+@media (max-width: 560px) {
+  .signup-modal {
+    border-radius: 14px;
+    max-height: 98vh;
+  }
+
+  .signup-modal__header,
+  .signup-modal__form,
+  .signup-modal__about-banner {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .signup-modal__about-banner {
+    margin-left: 18px;
+    margin-right: 18px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .signup-success-state {
+    padding: 20px 18px 10px 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-card {
+    padding: 28px 22px;
+  }
 }

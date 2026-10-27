@@ -22,6 +22,13 @@ interface AuthUser {
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  registerStaffRequest: (data: {
+    name: string;
+    email: string;
+    password: string;
+    staffCode?: string;
+    department?: string;
+  }) => Promise<{ success: boolean; message?: string; error?: string }>;
   logout: () => Promise<void>;
   hasRole: (role: UserRole) => boolean;
   hasAnyRole: (roles: UserRole[]) => boolean;
@@ -98,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         { name, email, password },
       );
       const roles = extractRoles(response.user);
-      if (!response.success || !response.user || !roles.includes('FACULTY')) {
+      if (!response.success || !response.user || !canUseStaffPortal(roles)) {
         return { success: false, error: response.error?.message || 'Sign-up failed.' };
       }
       setState({ isAuthenticated: true, user: { ...response.user, roles }, roles, loading: false });
@@ -108,7 +115,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         success: false,
         error: error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
           ? error.message
-          : 'Unable to create the demo account. Please try again.',
+          : 'Unable to create the account. Please try again.',
+      };
+    }
+  };
+
+  const registerStaffRequest = async (data: {
+    name: string;
+    email: string;
+    password: string;
+    staffCode?: string;
+    department?: string;
+  }): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+      const response = await api.post<{ success: boolean; message?: string; error?: { message?: string } }>(
+        '/api/auth/staff-register',
+        data,
+      );
+      if (!response.success) {
+        return { success: false, error: response.error?.message || 'Registration request failed.' };
+      }
+      return { success: true, message: response.message || 'Registration request submitted for HOD authorization.' };
+    } catch (error: unknown) {
+      return {
+        success: false,
+        error: error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+          ? error.message
+          : 'Unable to submit staff access request. Please try again.',
       };
     }
   };
@@ -122,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasAnyRole = (rolesToCheck: UserRole[]) => rolesToCheck.some((role) => state.roles.includes(role));
 
   return (
-    <AuthContext.Provider value={{ ...state, login, signup, logout, hasRole, hasAnyRole }}>
+    <AuthContext.Provider value={{ ...state, login, signup, registerStaffRequest, logout, hasRole, hasAnyRole }}>
       {children}
     </AuthContext.Provider>
   );
