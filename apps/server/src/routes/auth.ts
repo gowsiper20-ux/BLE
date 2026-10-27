@@ -122,7 +122,7 @@ authRoutes.post('/login', async (c) => {
   setCookie(c, 'admin_token', result.token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'Strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Strict',
     maxAge: 60 * 60 * 8,
     path: '/',
   });
@@ -227,7 +227,7 @@ authRoutes.post('/signup', async (c) => {
     setCookie(c, 'admin_token', result.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Strict',
       maxAge: 60 * 60 * 8,
       path: '/',
     });
@@ -287,7 +287,11 @@ authRoutes.post('/logout', async (c) => {
   } else if (user?.userType === 'STAFF') {
     await localAuthService.invalidateSessions(user.id);
   }
-  deleteCookie(c, 'admin_token', { path: '/' });
+  deleteCookie(c, 'admin_token', {
+    path: '/',
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Strict',
+  });
   return c.json({ success: true });
 });
 
